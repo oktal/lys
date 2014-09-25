@@ -1,7 +1,7 @@
-Rusty
+Lys
 =====
 
-Rusty is a projet that aims to implementation an experimental REST SDK in Rust
+Lys is a projet that aims to implementation an experimental REST SDK in Rust
 
 Rust, even though yet not very popular, is a very promising language made-in Mozilla.
 However, for real use cases, Rust lacks a good standard library support for networking.
