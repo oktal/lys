@@ -1,3 +1,24 @@
+use events::timer;
+
+mod events;
+
+struct MyCallback;
+
+impl timer::TimerCallback for MyCallback {
+
+    fn call(&self, numTimeouts: u64) {
+        println!("Timeout");
+    }
+}
+
 fn main() {
-    println!("Hello, world!")
+    let evLoop = events::event_loop::EventLoop::default();
+
+    let on_timer_event = box MyCallback;
+    let timer = timer::Timer::new(on_timer_event, 1);
+
+    timer.attach_to(evLoop);
+
+
+    evLoop.run()
 }
