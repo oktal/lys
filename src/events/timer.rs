@@ -1,5 +1,6 @@
 use std::mem;
 use events::event_loop::EventLoop;
+use events::errno::{SysCallResult, Errno};
 use events::libc::{c_int, c_void, time_t, size_t, timespec, read, CLOCK_MONOTONIC};
 
 #[repr(C, packed)]
@@ -38,17 +39,17 @@ pub struct Timer {
 }
 
 impl Timer {
-    pub fn new(callback: Box<TimerCallback>, interval: u64) -> Timer {
+    pub fn new(callback: Box<TimerCallback>, interval: u64) -> SysCallResult<Timer> {
         let fd = unsafe { timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK.bits()) };
         if fd < 0 {
-            fail!("Failed to create timerfd");
+            return Err(Errno::value());
         }
 
         let mut now = timespec { tv_sec: 0, tv_nsec: 0};
 
         let ct = unsafe { clock_gettime(CLOCK_MONOTONIC, &mut now as *mut timespec) };
         if ct < 0 {
-            fail!("Failed to clock_gettime");
+            return Err(Errno::value());
         }
 
         let new_value = TimerSpec {
@@ -67,10 +68,10 @@ impl Timer {
         };
 
         if st < 0 {
-            fail!("Failed to timerfd_settime");
+             return Err(Errno::value());
         }
 
-        Timer { callback: callback, interval: interval, fd: fd }
+        Ok(Timer { callback: callback, interval: interval, fd: fd })
     }
 
     pub fn attach_to(&self, evLoop: EventLoop) {
