@@ -1,7 +1,9 @@
 use std::mem;
-use events::event_loop::EventLoop;
-use events::errno::{SysCallResult, Errno};
-use events::libc::{c_int, c_void, time_t, size_t, timespec, read, CLOCK_MONOTONIC};
+use std::ptr;
+use libc::{c_int, c_void, time_t, size_t, timespec, read, CLOCK_MONOTONIC};
+use event_loop::EventLoop;
+use errno::{SysCallResult, Errno, consts};
+use super::AsyncEvent;
 
 #[repr(C, packed)]
 struct TimerSpec {
@@ -32,24 +34,24 @@ pub trait TimerCallback {
 }
 
 pub struct Timer {
-    callback: Box<TimerCallback>,
+    callback: fn(numTimeouts: u64),
     interval: u64,
 
     fd: i32
 }
 
 impl Timer {
-    pub fn new(callback: Box<TimerCallback>, interval: u64) -> SysCallResult<Timer> {
+    pub fn new(callback: fn(numTimeouts: u64), interval: u64) -> SysCallResult<Timer> {
         let fd = unsafe { timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK.bits()) };
         if fd < 0 {
-            return Err(Errno::value());
+            return Err(Errno::current());
         }
 
         let mut now = timespec { tv_sec: 0, tv_nsec: 0};
 
         let ct = unsafe { clock_gettime(CLOCK_MONOTONIC, &mut now as *mut timespec) };
         if ct < 0 {
-            return Err(Errno::value());
+            return Err(Errno::current());
         }
 
         let new_value = TimerSpec {
@@ -68,33 +70,47 @@ impl Timer {
         };
 
         if st < 0 {
-             return Err(Errno::value());
+             return Err(Errno::current());
         }
 
         Ok(Timer { callback: callback, interval: interval, fd: fd })
     }
 
-    pub fn attach_to(&self, evLoop: EventLoop) {
-        unsafe {
-            evLoop.poller.register(self.fd, mem::transmute(self))
-        }
+    pub fn attach_to<'a>(&'a self, ev_loop: &'a mut EventLoop<'a>) -> &'a EventLoop<'a> {
+
+        ev_loop.poller.register(self.fd);
+
+        ev_loop.events.insert(self.fd, self);
+
+        ev_loop
+
     }
 
-    pub fn process(&mut self) {
-        let mut numTimeouts: u64 = 0;
+
+    pub fn pollFd(&self) -> i32 { self.fd }
+}
+
+impl AsyncEvent for Timer {
+    fn process(&self) {
+
+        let mut num_timeouts: u64 = 0;
         loop {
             let res = unsafe {
-               read(self.fd, mem::transmute(numTimeouts), 8 as size_t)
+               read(self.fd, mem::transmute(&num_timeouts), 8 as size_t)
             };
             if res == -1 {
-                continue;
+                let err = Errno::current();
+                match err.value() {
+                    consts::EAGAIN => break,
+                    _ => fail!(err)
+                }
             }
 
             if res != 8 {
                 fail!("Timer: failed to read the right number of bytes");
             }
 
-            self.callback.call(numTimeouts);
+            (self.callback)(num_timeouts);
             break;
         }
 

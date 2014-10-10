@@ -1,4 +1,5 @@
-use events::libc::{c_int, c_void};
+use libc::{c_int, c_void};
+use std::mem;
 
 extern {
     pub fn epoll_create(size: c_int) -> c_int;
@@ -16,7 +17,7 @@ pub enum EpollControl {
 #[repr(C, packed)]
 pub struct EpollEvent {
     pub events: EpollEventKind,
-    pub data: *mut c_void
+    pub data: c_int
 }
 
 bitflags!(
@@ -53,11 +54,11 @@ impl Epoll {
         Epoll { efd: fd }
     }
 
-    pub fn register(&self, fd: i32, data: *mut c_void) {
+    pub fn register(&self, fd: i32) {
         let kind = EPOLLIN | EPOLLOUT;
         let event = EpollEvent {
             events: kind,
-            data: data
+            data: fd as c_int
         };
 
         let res = unsafe {
@@ -70,9 +71,9 @@ impl Epoll {
     }
 
     pub fn poll(&self, events: &mut [EpollEvent], timeout_ms: uint) -> i32 {
-        println!("Calling epoll_wait");
         let res = unsafe {
-            epoll_wait(self.efd, events.as_mut_ptr(), events.len() as c_int, timeout_ms as c_int)
+            epoll_wait(self.efd, events.as_mut_ptr(), events.len() as c_int,
+                       timeout_ms as c_int)
         };
 
         res

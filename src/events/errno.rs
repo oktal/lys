@@ -56,12 +56,18 @@ impl fmt::Show for Errno {
 }
 
 impl Errno {
-    pub fn value() -> Errno {
+    pub fn current() -> Errno {
          Errno(os::errno())
      }
+
+    pub fn value(&self) -> int {
+        let &Errno(val) = self;
+
+        val
+    }
 }
 
-mod consts {
+pub mod consts {
      pub static EPERM   : int = 1;
      pub static ENOENT  : int = 2;
      pub static ESRCH   : int = 3;

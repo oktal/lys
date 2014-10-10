@@ -3,3 +3,7 @@
 name = "lys"
 version = "0.0.1"
 authors = ["Mathieu Stefani <mathieu@datacratic.com>"]
+
+[lib]
+name = "async"
+path = "src/events/lib.rs"

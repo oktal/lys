@@ -1,6 +1,9 @@
-use events::backend::epoll;
-use events::libc::c_void;
-use events::timer;
+use backend::epoll;
+use libc::c_void;
+use std::collections::TreeMap;
+use std::mem;
+
+use super::AsyncEvent;
 
 // TODO: Fix all the unsafe crap
 
@@ -21,35 +24,34 @@ pub enum BackendType {
     IOCP
 }
 
-pub struct EventLoop {
+pub struct EventLoop<'a> {
     pub poller: epoll::Epoll,
+
+    pub events: TreeMap<i32, &'a AsyncEvent + 'a>
 }
 
-impl EventLoop {
+impl<'a> EventLoop<'a> {
     #[cfg(target_os = "linux")]
-    pub fn default() -> EventLoop {
+    pub fn default() -> EventLoop<'a> {
         let poller = epoll::Epoll::new(1 << 16);
 
-        EventLoop { poller: poller }
+        EventLoop { poller: poller, events: TreeMap::new() }
     }
 
     pub fn run(&self) {
         loop {
-            let mut events: [epoll::EpollEvent, ..1] =
-            [ epoll::EpollEvent { events: epoll::EPOLLIN, data: 0 as *mut c_void }];
+            let mut events: [epoll::EpollEvent, ..256]
+               = unsafe { mem::uninitialized() };
 
-            let readyCount = self.poller.poll(events, 2000);
+            let readyCount = self.poller.poll(events, 1000);
             if readyCount > 0 {
                 for i in range(0, readyCount as uint) {
                     if events[i].events.contains(epoll::EPOLLIN) {
-                        println!("Ready for POLLIN");
-
-                        /* Does not compile 
-                        unsafe {
-                            let timer_ev = events[i].data as *const timer::Timer;
-                            timer_ev.process();
+                        let fd = events[i].data;
+                        match self.events.find(&fd) {
+                             Some(&asyncEvent) => asyncEvent.process(),
+                             None => ()
                         }
-                        */
                     }
                 }
             }

@@ -1,30 +1,23 @@
-#![feature(globs)]
+extern crate async;
 
-use events::timer;
+use async::{Timer,EventLoop};
 
-mod events;
-
-struct MyCallback;
-
-impl timer::TimerCallback for MyCallback {
-
-    fn call(&self, numTimeouts: u64) {
-        println!("Timeout");
-    }
+fn on_timer_event(num_timeouts: u64) {
+     println!("Timeout!");
 }
 
 fn main() {
-    let evLoop = events::event_loop::EventLoop::default();
+    let mut ev_loop = EventLoop::default();
 
-    let on_timer_event = box MyCallback;
-
-    let timer = match timer::Timer::new(on_timer_event, 1) {
+    let timer = match Timer::new(on_timer_event, 2) {
         Ok(timer) => timer,
         Err(errno) => fail!(errno)
     };
+    
+    // TODO: Figure out why we need to return the reference that we borrowed
 
-    timer.attach_to(evLoop);
+    let ev_loop2 = timer.attach_to(&mut ev_loop);
 
+    ev_loop2.run();
 
-    evLoop.run()
 }
