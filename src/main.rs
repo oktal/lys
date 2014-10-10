@@ -1,6 +1,6 @@
-extern crate async;
+extern crate lio;
 
-use async::{Timer,EventLoop};
+use lio::{Timer,EventLoop};
 
 fn on_timer_event(num_timeouts: u64) {
      println!("Timeout!");

@@ -1,5 +1,5 @@
-#![crate_name = "async"]
-#![comment = "An asynchronous event handling mechanism for Rust"]
+#![crate_name = "lio"]
+#![comment = "Lys IO is an asynchronous event handling mechanism for Rust"]
 #![license = "MIT"]
 #![crate_type = "rlib"]
 #![feature(macro_rules, phase, globs)]
