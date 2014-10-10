@@ -23,8 +23,8 @@ extern {
 
 bitflags!(
     flags TimerFdFlag: c_int {
-        static TFD_CLOEXEC   = 0o2000000,
-        static TFD_NONBLOCK  = 0o0004000
+        const TFD_CLOEXEC   = 0o2000000,
+        const TFD_NONBLOCK  = 0o0004000
     }
 )
 
@@ -89,7 +89,7 @@ impl Timer {
         }
     }
 
-    pub fn attach_to<'a>(&'a self, ev_loop: &'a mut EventLoop<'a>) -> &'a EventLoop<'a> {
+    pub fn attach_to<'a>(&'a self, ev_loop: &'a mut EventLoop<'a>) -> &'a mut EventLoop<'a> {
 
         ev_loop.poller.register(self.fd);
 
