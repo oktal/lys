@@ -43,7 +43,7 @@ impl<'a> EventLoop<'a> {
             let mut events: [epoll::EpollEvent, ..256]
                = unsafe { mem::uninitialized() };
 
-            let readyCount = self.poller.poll(events, 1000);
+            let readyCount = self.poller.poll(events, consts::POLL_TIMEOUT);
             if readyCount > 0 {
                 for i in range(0, readyCount as uint) {
                     if events[i].events.contains(epoll::EPOLLIN) {
@@ -57,4 +57,8 @@ impl<'a> EventLoop<'a> {
             }
         }
     }
+}
+
+mod consts {
+    pub static POLL_TIMEOUT: uint = 1000;
 }
