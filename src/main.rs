@@ -9,7 +9,7 @@ fn on_timer_event(num_timeouts: u64) {
 fn main() {
     let mut ev_loop = EventLoop::default();
 
-    let timer = match Timer::new(on_timer_event, 2) {
+    let timer = match Timer::single_shot(on_timer_event, 2) {
         Ok(timer) => timer,
         Err(errno) => fail!(errno)
     };
