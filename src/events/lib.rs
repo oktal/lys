@@ -5,6 +5,7 @@
 #![feature(macro_rules, phase, globs)]
 
 extern crate libc;
+extern crate native;
 
 pub use event_loop::EventLoop;
 pub use errno::{SysCallResult, Errno};

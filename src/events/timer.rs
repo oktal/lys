@@ -1,6 +1,7 @@
 use std::mem;
 use std::ptr;
 use libc::{c_int, c_void, time_t, size_t, timespec, read, CLOCK_MONOTONIC};
+use native::io::file::fd_t;
 use event_loop::EventLoop;
 use errno::{SysCallResult, Errno, consts};
 use super::AsyncEvent;
@@ -29,7 +30,7 @@ bitflags!(
 )
 
 
-fn create_timerfd(interval: u64, single_shot: bool) -> SysCallResult<i32>
+fn create_timerfd(interval: u64, single_shot: bool) -> SysCallResult<fd_t>
 {
     let fd = unsafe { timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK.bits()) };
     if fd < 0 {
@@ -71,7 +72,7 @@ pub struct Timer {
     callback: fn(numTimeouts: u64),
     interval: u64,
 
-    fd: i32
+    fd: fd_t
 }
 
 impl Timer {
@@ -95,7 +96,7 @@ impl Timer {
         ev_loop.events.insert(self.fd, self);
     }
 
-    pub fn poll_fd(&self) -> i32 { self.fd }
+    pub fn poll_fd(&self) -> fd_t { self.fd }
 }
 
 impl AsyncEvent for Timer {

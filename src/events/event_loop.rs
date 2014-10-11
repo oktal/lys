@@ -2,6 +2,7 @@ use backend::epoll;
 use libc::c_void;
 use std::collections::TreeMap;
 use std::mem;
+use native::io::file::fd_t;
 
 use super::AsyncEvent;
 
@@ -27,7 +28,7 @@ pub enum BackendType {
 pub struct EventLoop<'a> {
     pub poller: epoll::Epoll,
 
-    pub events: TreeMap<i32, &'a AsyncEvent + 'a>
+    pub events: TreeMap<fd_t, &'a AsyncEvent + 'a>
 }
 
 impl<'a> EventLoop<'a> {

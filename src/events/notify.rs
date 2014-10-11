@@ -1,4 +1,5 @@
 use libc::{c_uint, c_int, size_t, read, write};
+use native::io::file::fd_t;
 use std::mem;
 use errno::{SysCallResult, Errno, consts};
 use event_loop::EventLoop;
@@ -18,7 +19,7 @@ bitflags!(
 pub struct Notify {
     callback: fn(),
 
-    fd: i32
+    fd: fd_t
 }
 
 impl Notify {
@@ -40,7 +41,7 @@ impl Notify {
         ev_loop.events.insert(self.fd, self);
     }
 
-    pub fn poll_fd(&self) -> i32 { self.fd }
+    pub fn poll_fd(&self) -> fd_t { self.fd }
 
     pub fn notify(&self) -> SysCallResult<()> {
         let to_write: u64 = 1;
