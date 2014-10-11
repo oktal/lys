@@ -13,11 +13,9 @@ fn main() {
         Ok(timer) => timer,
         Err(errno) => fail!(errno)
     };
-    
-    // TODO: Figure out why we need to return the reference that we borrowed
 
-    let ev_loop2 = timer.attach_to(&mut ev_loop);
+    timer.attach_to(&mut ev_loop);
 
-    ev_loop2.run();
+    ev_loop.run();
 
 }

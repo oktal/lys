@@ -89,14 +89,10 @@ impl Timer {
         }
     }
 
-    pub fn attach_to<'a>(&'a self, ev_loop: &'a mut EventLoop<'a>) -> &'a mut EventLoop<'a> {
-
+    pub fn attach_to<'a>(&'a self, ev_loop: &mut EventLoop<'a>) {
         ev_loop.poller.register(self.fd);
 
         ev_loop.events.insert(self.fd, self);
-
-        ev_loop
-
     }
 
     pub fn poll_fd(&self) -> i32 { self.fd }
