@@ -55,7 +55,7 @@ impl Epoll {
     }
 
     pub fn register(&self, fd: i32) {
-        let kind = EPOLLIN | EPOLLOUT;
+        let kind = EPOLLIN;
         let event = EpollEvent {
             events: kind,
             data: fd as c_int
