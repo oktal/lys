@@ -34,7 +34,7 @@ pub struct EventLoop<'a> {
 impl<'a> EventLoop<'a> {
     #[cfg(target_os = "linux")]
     pub fn default() -> EventLoop<'a> {
-        let poller = epoll::Epoll::new(1 << 16);
+        let poller = epoll::Epoll::new(1 << 16).unwrap();
 
         EventLoop { poller: poller, events: TreeMap::new() }
     }
@@ -44,15 +44,13 @@ impl<'a> EventLoop<'a> {
             let mut events: [epoll::EpollEvent, ..256]
                = unsafe { mem::uninitialized() };
 
-            let readyCount = self.poller.poll(events, consts::POLL_TIMEOUT);
-            if readyCount > 0 {
-                for i in range(0, readyCount as uint) {
-                    if events[i].events.contains(epoll::EPOLLIN) {
-                        let fd = events[i].data;
-                        match self.events.find(&fd) {
-                             Some(&asyncEvent) => asyncEvent.process(),
-                             None => ()
-                        }
+            let readyCount = self.poller.poll(events, consts::POLL_TIMEOUT).unwrap();
+            for event in events.iter().take(readyCount) {
+                if event.events.contains(epoll::EPOLLIN) {
+                    let fd = event.data;
+                    match self.events.find(&fd) {
+                         Some(&asyncEvent) => asyncEvent.process(),
+                         None => ()
                     }
                 }
             }

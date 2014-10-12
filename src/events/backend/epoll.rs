@@ -1,5 +1,6 @@
 use libc::{c_int, c_void};
 use std::mem;
+use errno::{SysCallResult, Errno};
 
 extern {
     pub fn epoll_create(size: c_int) -> c_int;
@@ -44,17 +45,17 @@ pub struct Epoll {
 }
 
 impl Epoll {
-    pub fn new(size: u64) -> Epoll {
+    pub fn new(size: u64) -> SysCallResult<Epoll> {
         let fd = unsafe { epoll_create(1024) };
 
         if fd < 0 {
-            fail!("Failed to epoll_create");
+            return Err(Errno::current());
         }
 
-        Epoll { efd: fd }
+        Ok(Epoll { efd: fd })
     }
 
-    pub fn register(&self, fd: i32) {
+    pub fn register(&self, fd: i32) -> SysCallResult<()> {
         let kind = EPOLLIN;
         let event = EpollEvent {
             events: kind,
@@ -66,17 +67,23 @@ impl Epoll {
         };
 
         if res < 0 {
-            fail!("Failed to epoll_ctl");
+            return Err(Errno::current());
         }
+
+        Ok( () )
     }
 
-    pub fn poll(&self, events: &mut [EpollEvent], timeout_ms: uint) -> i32 {
+    pub fn poll(&self, events: &mut [EpollEvent], timeout_ms: uint) -> SysCallResult<uint> {
         let res = unsafe {
             epoll_wait(self.efd, events.as_mut_ptr(), events.len() as c_int,
                        timeout_ms as c_int)
         };
 
-        res
+        if res < 0 {
+            return Err(Errno::current());
+        }
+
+        Ok(res as uint)
     }
 
 }
