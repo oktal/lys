@@ -8,3 +8,4 @@ extern crate libc;
 extern crate native;
 
 pub mod io;
+pub mod utils;
