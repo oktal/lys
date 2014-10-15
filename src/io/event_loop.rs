@@ -1,4 +1,4 @@
-use backend::epoll;
+use io::backend::epoll;
 use libc::c_void;
 use std::collections::TreeMap;
 use std::mem;

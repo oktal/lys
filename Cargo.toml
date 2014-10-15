@@ -5,5 +5,5 @@ version = "0.0.1"
 authors = ["Mathieu Stefani <mathieu@datacratic.com>"]
 
 [lib]
-name = "lio"
-path = "src/events/lib.rs"
+name = "lys"
+path = "src/lib.rs"

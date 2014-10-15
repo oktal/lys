@@ -1,6 +1,6 @@
-extern crate lio;
+extern crate lys;
 
-use lio::{Timer, Notify, EventLoop};
+use lys::io::{Timer, Notify, EventLoop};
 
 fn on_timer_event(num_timeouts: u64) {
      println!("Timeout!");

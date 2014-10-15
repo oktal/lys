@@ -2,8 +2,8 @@ use std::mem;
 use std::ptr;
 use libc::{c_int, c_void, time_t, size_t, timespec, read, CLOCK_MONOTONIC};
 use native::io::file::fd_t;
-use event_loop::EventLoop;
-use errno::{SysCallResult, Errno, consts};
+use io::event_loop::EventLoop;
+use io::errno::{SysCallResult, Errno, consts};
 use super::AsyncEvent;
 
 #[repr(C, packed)]

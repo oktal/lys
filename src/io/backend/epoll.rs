@@ -1,6 +1,6 @@
 use libc::{c_int, c_void};
 use std::mem;
-use errno::{SysCallResult, Errno};
+use io::errno::{SysCallResult, Errno};
 
 extern {
     pub fn epoll_create(size: c_int) -> c_int;

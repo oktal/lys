@@ -1,9 +1,10 @@
 use libc::{c_uint, c_int, size_t, read, write};
 use native::io::file::fd_t;
 use std::mem;
-use errno::{SysCallResult, Errno, consts};
-use event_loop::EventLoop;
-use super::AsyncEvent;
+use io::errno::{SysCallResult, Errno, consts};
+use io::event_loop::EventLoop;
+
+use io::AsyncEvent;
 
 extern {
     fn eventfd(init_val: c_uint, flags: c_int) -> c_int;
