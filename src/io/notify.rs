@@ -36,14 +36,6 @@ impl Notify {
         Ok(Notify { callback: callback, fd: fd })
     }
 
-    pub fn attach_to<'a>(&'a self, ev_loop: &mut EventLoop<'a>) {
-        ev_loop.poller.register(self.fd);
-
-        ev_loop.events.insert(self.fd, self);
-    }
-
-    pub fn poll_fd(&self) -> fd_t { self.fd }
-
     pub fn notify(&self) -> SysCallResult<()> {
         let to_write: u64 = 1;
 
@@ -81,4 +73,6 @@ impl AsyncEvent for Notify {
             (self.callback)()
         }
     }
+
+    fn poll_fd(&self) -> fd_t { self.fd }
 }

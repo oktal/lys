@@ -18,14 +18,15 @@ fn main() {
         Err(errno) => fail!(errno)
     };
 
-    timer.attach_to(&mut ev_loop);
+    ev_loop.add_event(&timer);
 
     let notify = match Notify::new(on_notify) {
         Ok(notify) => notify,
         Err(errno) => fail!(errno)
     };
 
-    notify.attach_to(&mut ev_loop);
+    ev_loop.add_event(&notify);
+
 
     match notify.notify() {
         Ok(_) => (),

@@ -1,4 +1,5 @@
 use io::backend::epoll;
+use utils::BoundedQueue;
 use libc::c_void;
 use std::collections::TreeMap;
 use std::mem;
@@ -28,7 +29,8 @@ pub enum BackendType {
 pub struct EventLoop<'a> {
     pub poller: epoll::Epoll,
 
-    pub events: TreeMap<fd_t, &'a AsyncEvent + 'a>
+    pub watchers: TreeMap<fd_t, &'a AsyncEvent + 'a>,
+    pub events_queue: BoundedQueue<&'a AsyncEvent + 'a>
 }
 
 impl<'a> EventLoop<'a> {
@@ -36,11 +38,23 @@ impl<'a> EventLoop<'a> {
     pub fn default() -> EventLoop<'a> {
         let poller = epoll::Epoll::new(1 << 16).unwrap();
 
-        EventLoop { poller: poller, events: TreeMap::new() }
+        EventLoop {
+            poller: poller,
+            watchers: TreeMap::new(),
+            events_queue: BoundedQueue::new(1 << 8)
+        }
     }
 
-    pub fn run(&self) {
+    pub fn run(&mut self) {
         loop {
+            while (!self.events_queue.is_empty()) {
+                let event = self.events_queue.pop().ok().unwrap();
+                let fd = event.poll_fd();
+
+                self.poller.register(fd);
+                self.watchers.insert(fd,  event);
+            }
+
             let mut events: [epoll::EpollEvent, ..256]
                = unsafe { mem::uninitialized() };
 
@@ -48,12 +62,19 @@ impl<'a> EventLoop<'a> {
             for event in events.iter().take(readyCount) {
                 if event.events.contains(epoll::EPOLLIN) {
                     let fd = event.data;
-                    match self.events.find(&fd) {
+                    match self.watchers.find(&fd) {
                          Some(&asyncEvent) => asyncEvent.process(),
                          None => ()
                     }
                 }
             }
+        }
+    }
+
+    pub fn add_event(&mut self, event: &'a AsyncEvent) {
+        match self.events_queue.push(event) {
+            Err(Full) => fail!("The event queue is full"),
+            Ok(_) => ()
         }
     }
 }

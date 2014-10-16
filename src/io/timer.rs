@@ -93,10 +93,9 @@ impl Timer {
     pub fn attach_to<'a>(&'a self, ev_loop: &mut EventLoop<'a>) {
         ev_loop.poller.register(self.fd);
 
-        ev_loop.events.insert(self.fd, self);
+        ev_loop.watchers.insert(self.fd, self);
     }
 
-    pub fn poll_fd(&self) -> fd_t { self.fd }
 }
 
 impl AsyncEvent for Timer {
@@ -124,4 +123,6 @@ impl AsyncEvent for Timer {
         }
 
     }
+
+    fn poll_fd(&self) -> fd_t { self.fd }
 }
