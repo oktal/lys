@@ -1,11 +1,13 @@
 use std::vec::Vec;
-use std::result;
+use std::result::Result;
+use std::collections::{Collection, Mutable};
 
 pub struct BoundedQueue<T> {
     data: Vec<Option<T>>,
     size: uint,
     read_index: uint,
-    write_index: uint
+    write_index: uint,
+    len: uint
 }
 
 pub enum State {
@@ -13,7 +15,7 @@ pub enum State {
     Empty
 }
 
-pub type QueueResult<T> = result::Result<T, State>;
+pub type QueueResult<T> = Result<T, State>;
 
 impl<T> BoundedQueue<T> {
      pub fn new(size: uint) -> BoundedQueue<T> {
@@ -22,7 +24,8 @@ impl<T> BoundedQueue<T> {
              data: Vec::from_fn(real_size, |_| { None }),
              size: real_size,
              read_index: 0,
-             write_index: 0
+             write_index: 0,
+             len: 0
          }
 
      }
@@ -35,6 +38,7 @@ impl<T> BoundedQueue<T> {
          let index = self.write_index;
          *self.data.get_mut(index) = Some(value);
          self.write_index = (self.write_index + 1) % self.size;
+         self.len += 1;
 
          Ok(index)
      }
@@ -47,6 +51,7 @@ impl<T> BoundedQueue<T> {
          let value = self.data.get_mut(self.read_index).take().unwrap();
 
          self.read_index = (self.read_index + 1) % self.size;
+         self.len -= 1;
 
          Ok(value)
 
@@ -56,24 +61,60 @@ impl<T> BoundedQueue<T> {
          (self.write_index + 1) % self.size == self.read_index
      }
 
-     pub fn is_empty(&self) -> bool {
-         self.write_index == self.read_index
-     }
-
 }
+
+impl<T> Collection for BoundedQueue<T> {
+    fn len(&self) -> uint {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.write_index == self.read_index
+    }
+}
+
+impl<T> Mutable for BoundedQueue<T> {
+    fn clear(&mut self) {
+        self.len = 0;
+        self.write_index = 0;
+        self.read_index = 0;
+        for value in self.data.iter_mut() {
+            *value = None;
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
-    use super::{BoundedQueue, State, QueueResult};
+    use super::{BoundedQueue, State};
     use std::iter;
 
     #[test]
     fn basic_tests() {
         let mut queue = BoundedQueue::<int>::new(8);
+        assert_eq!(queue.is_empty(), true);
+        assert_eq!(queue.len(), 0);
+
         for to_push in iter::count(0, 1).take(8) {
             assert_eq!(queue.push(to_push).is_ok(), true);
         }
         assert_eq!(queue.push(9).is_err(), true);
+
+        assert_eq!(queue.is_empty(), false);
+        assert_eq!(queue.len(), 8);
+
+        let value = queue.pop();
+        assert_eq!(value.is_ok(), true);
+        assert_eq!(value.ok(), Some(0));
+
+        assert_eq!(queue.len(), 7);
+        assert_eq!(queue.is_empty(), false);
+
+        queue.clear();
+
+        assert_eq!(queue.is_empty(), true);
+        assert_eq!(queue.pop().is_err(), true);
 
     }
 }
