@@ -1,6 +1,8 @@
 extern crate lys;
 
-use lys::io::{AsyncEvent, Timer, Notify, EventLoop};
+use lys::io::{AsyncEvent, Timer, Notify, EventLoop, Tcp};
+
+use std::io::net::ip::{SocketAddr, Ipv4Addr};
 
 fn on_timer_event(timer: &Timer, num_timeouts: u64) {
      let timer_event = timer as &AsyncEvent;
@@ -33,6 +35,16 @@ fn main() {
         Ok(_) => (),
         Err(errno) => fail!(errno)
     }
+
+    let sockaddr = SocketAddr {
+        ip: Ipv4Addr(206, 126, 112, 151),
+        port: 80
+    };
+
+    match Tcp::connect(sockaddr) {
+        Ok(_) => (),
+        Err(err) => println!("Failed with err = {}", err)
+    };
 
     ev_loop.run();
 
