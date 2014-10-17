@@ -47,8 +47,9 @@ impl<'a> EventLoop<'a> {
 
     pub fn run(&mut self) {
         loop {
+            // First we dequeue all the events and add them to the loop
             while (!self.events_queue.is_empty()) {
-                let event = self.events_queue.pop().ok().unwrap();
+                let mut event = self.events_queue.pop().ok().unwrap();
                 let fd = event.poll_fd();
 
                 self.poller.register(fd);
@@ -63,7 +64,7 @@ impl<'a> EventLoop<'a> {
                 if event.events.contains(epoll::EPOLLIN) {
                     let fd = event.data;
                     match self.watchers.find(&fd) {
-                         Some(&asyncEvent) => asyncEvent.process(),
+                         Some(event) => event.process(),
                          None => ()
                     }
                 }

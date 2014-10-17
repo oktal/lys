@@ -1,4 +1,4 @@
-use libc::{c_uint, c_int, size_t, read, write};
+use libc::{c_uint, c_int, size_t, read, write, close};
 use native::io::file::fd_t;
 use std::mem;
 use io::errno::{SysCallResult, Errno, consts};
@@ -17,23 +17,27 @@ bitflags!(
     }
 )
 
+pub type OnNotify = fn(notify: &Notify);
+
 pub struct Notify {
-    callback: fn(),
+    callback: OnNotify,
+    active: bool,
 
     fd: fd_t
 }
 
+
 impl Notify {
-    pub fn new(callback: fn()) -> SysCallResult<Notify> {
+    pub fn new(callback: OnNotify) -> SysCallResult<Notify> {
         let fd = unsafe {
             eventfd(0, EFD_NONBLOCK.bits())
         };
 
-        if (fd < 0) {
+        if fd < 0 {
             return Err(Errno::current());
         }
 
-        Ok(Notify { callback: callback, fd: fd })
+        Ok(Notify { callback: callback, fd: fd, active: false })
     }
 
     pub fn notify(&self) -> SysCallResult<()> {
@@ -70,9 +74,11 @@ impl AsyncEvent for Notify {
                 fail!("Notify: failed to read the right number of bytes");
             }
 
-            (self.callback)()
+            (self.callback)(self)
         }
     }
 
     fn poll_fd(&self) -> fd_t { self.fd }
+
+    fn stop(&mut self) { unsafe { close(self.fd) }; }
 }

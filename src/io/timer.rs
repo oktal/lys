@@ -1,6 +1,6 @@
 use std::mem;
 use std::ptr;
-use libc::{c_int, c_void, time_t, size_t, timespec, read, CLOCK_MONOTONIC};
+use libc::{c_int, c_void, time_t, size_t, timespec, read, close, CLOCK_MONOTONIC};
 use native::io::file::fd_t;
 use io::event_loop::EventLoop;
 use io::errno::{SysCallResult, Errno, consts};
@@ -22,6 +22,7 @@ extern {
     fn clock_gettime(clockid: c_int, tp: *mut timespec) -> c_int;
 }
 
+#[allow(dead_code)]
 bitflags!(
     flags TimerFdFlag: c_int {
         const TFD_CLOEXEC   = 0o2000000,
@@ -68,24 +69,29 @@ fn create_timerfd(interval: u64, single_shot: bool) -> SysCallResult<fd_t>
     Ok(fd)
 }
 
+pub type OnTimer = fn(timer: &Timer, numTimeouts: u64);
+
 pub struct Timer {
-    callback: fn(numTimeouts: u64),
+    callback: OnTimer,
     interval: u64,
+    active: bool,
 
     fd: fd_t
 }
 
 impl Timer {
-    pub fn new(callback: fn(numTimeouts: u64), interval: u64) -> SysCallResult<Timer> {
+    pub fn new(callback: OnTimer, interval: u64) -> SysCallResult<Timer> {
         match create_timerfd(interval, false) {
-            Ok(fd) => Ok(Timer { callback: callback, interval: interval, fd: fd}),
+            Ok(fd) => Ok(Timer {
+                callback: callback, interval: interval, fd: fd, active: false}),
             Err(errno) => Err(errno)
         }
     }
 
-    pub fn single_shot(callback: fn(num_timeouts: u64), interval: u64) -> SysCallResult<Timer> {
+    pub fn single_shot(callback: OnTimer, interval: u64) -> SysCallResult<Timer> {
         match create_timerfd(interval, true) {
-            Ok(fd) => Ok(Timer { callback: callback, interval: interval, fd: fd}),
+            Ok(fd) => Ok(Timer {
+                callback: callback, interval: interval, fd: fd, active: false}),
             Err(errno) => Err(errno)
         }
     }
@@ -118,11 +124,13 @@ impl AsyncEvent for Timer {
                 fail!("Timer: failed to read the right number of bytes");
             }
 
-            (self.callback)(num_timeouts);
+            (self.callback)(self, num_timeouts);
             break;
         }
 
     }
 
     fn poll_fd(&self) -> fd_t { self.fd }
+
+    fn stop(&mut self) { unsafe { close(self.fd) }; }
 }

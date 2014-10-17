@@ -1,12 +1,13 @@
 extern crate lys;
 
-use lys::io::{Timer, Notify, EventLoop};
+use lys::io::{AsyncEvent, Timer, Notify, EventLoop};
 
-fn on_timer_event(num_timeouts: u64) {
-     println!("Timeout!");
+fn on_timer_event(timer: &Timer, num_timeouts: u64) {
+     let timer_event = timer as &AsyncEvent;
+     println!("Timeout! -> {}", timer_event.poll_fd());
 }
 
-fn on_notify() {
+fn on_notify(notify: &Notify) {
     println!("Notified!");
 }
 

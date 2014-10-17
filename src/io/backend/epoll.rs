@@ -73,6 +73,18 @@ impl Epoll {
         Ok( () )
     }
 
+    pub fn remove(&mut self, fd: i32) -> SysCallResult<()> {
+        let res = unsafe {
+            epoll_ctl(self.efd, EpollCtlDel as c_int, fd, 0 as *const EpollEvent)
+        };
+
+        if res < 0 {
+            return Err(Errno::current());
+        }
+
+        Ok( () )
+    }
+
     pub fn poll(&self, events: &mut [EpollEvent], timeout_ms: uint) -> SysCallResult<uint> {
         let res = unsafe {
             epoll_wait(self.efd, events.as_mut_ptr(), events.len() as c_int,

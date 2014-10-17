@@ -9,6 +9,8 @@ pub trait AsyncEvent {
     fn process(&self);
 
     fn poll_fd(&self) -> fd_t;
+
+    fn stop(&mut self);
 }
 
 mod event_loop;
