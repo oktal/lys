@@ -36,15 +36,9 @@ fn main() {
         Err(errno) => fail!(errno)
     }
 
-    let sockaddr = SocketAddr {
-        ip: Ipv4Addr(206, 126, 112, 151),
-        port: 80
-    };
+    let tcp = Tcp::connect("google.com", 80).unwrap();
 
-    match Tcp::connect(sockaddr) {
-        Ok(_) => (),
-        Err(err) => println!("Failed with err = {}", err)
-    };
+    ev_loop.add_event(&tcp);
 
     ev_loop.run();
 

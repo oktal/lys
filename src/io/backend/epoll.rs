@@ -55,10 +55,9 @@ impl Epoll {
         Ok(Epoll { efd: fd })
     }
 
-    pub fn register(&self, fd: i32) -> SysCallResult<()> {
-        let kind = EPOLLIN;
+    pub fn register(&self, fd: i32, flags: EpollEventKind) -> SysCallResult<()> {
         let event = EpollEvent {
-            events: kind,
+            events: flags,
             data: fd as c_int
         };
 

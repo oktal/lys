@@ -4,7 +4,7 @@ use libc::{c_int, c_void, time_t, size_t, timespec, read, close, CLOCK_MONOTONIC
 use native::io::file::fd_t;
 use io::event_loop::EventLoop;
 use io::errno::{SysCallResult, Errno, consts};
-use super::AsyncEvent;
+use super::{AsyncEvent, IoFlag, POLL_IN, POLL_OUT};
 
 #[repr(C, packed)]
 struct TimerSpec {
@@ -76,14 +76,20 @@ pub struct Timer {
     interval: u64,
     active: bool,
 
-    fd: fd_t
+    fd: fd_t,
+    events: IoFlag
 }
 
 impl Timer {
     pub fn new(callback: OnTimer, interval: u64) -> SysCallResult<Timer> {
         match create_timerfd(interval, false) {
             Ok(fd) => Ok(Timer {
-                callback: callback, interval: interval, fd: fd, active: false}),
+                callback: callback,
+                interval: interval,
+                fd: fd,
+                active: false,
+                events: POLL_IN
+            }),
             Err(errno) => Err(errno)
         }
     }
@@ -91,15 +97,20 @@ impl Timer {
     pub fn single_shot(callback: OnTimer, interval: u64) -> SysCallResult<Timer> {
         match create_timerfd(interval, true) {
             Ok(fd) => Ok(Timer {
-                callback: callback, interval: interval, fd: fd, active: false}),
+                callback: callback,
+                interval: interval,
+                fd: fd,
+                active: false,
+                events: POLL_IN
+            }),
             Err(errno) => Err(errno)
         }
     }
 
     pub fn attach_to<'a>(&'a self, ev_loop: &mut EventLoop<'a>) {
-        ev_loop.poller.register(self.fd);
+       // ev_loop.poller.register(self.fd);
 
-        ev_loop.watchers.insert(self.fd, self);
+       // ev_loop.watchers.insert(self.fd, self);
     }
 
 }
@@ -133,4 +144,6 @@ impl AsyncEvent for Timer {
     fn poll_fd(&self) -> fd_t { self.fd }
 
     fn stop(&mut self) { unsafe { close(self.fd) }; }
+
+    fn flags(&self) -> IoFlag { self.events }
 }

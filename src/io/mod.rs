@@ -14,6 +14,8 @@ pub trait AsyncEvent {
     fn poll_fd(&self) -> fd_t;
 
     fn stop(&mut self);
+
+    fn flags(&self) -> IoFlag;
 }
 
 bitflags!(

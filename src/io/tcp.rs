@@ -6,7 +6,14 @@ use super::{AsyncEvent, IoFlag, POLL_IN, POLL_OUT};
 use libc;
 
 use std::io::net::ip;
+use native::io::net::htons;
 use std::mem;
+use std::ptr;
+
+extern {
+    fn getaddrinfo(node: *const libc::c_char, service: *const libc::c_char,
+                   hints: *const libc::addrinfo, res: *mut *mut libc::addrinfo) -> libc::c_int;
+}
 
 bitflags!(
     flags TimerFdFlag: libc::c_int {
@@ -32,14 +39,9 @@ fn ipaddr_to_inaddr(ipaddr: ip::IpAddr) -> libc::in_addr {
     libc::in_addr { s_addr: s_addr }
 }
 
-fn create_socket(addr: ip::SocketAddr) -> SysCallResult<sock_t> {
+fn create_socket() -> SysCallResult<sock_t> {
     unsafe {
-        let family = match addr.ip {
-            ip::Ipv4Addr(..) => libc::AF_INET,
-            ip::Ipv6Addr(..) => libc::AF_INET6
-        };
-
-        let fd = libc::socket(family, libc::SOCK_STREAM | SOCK_NONBLOCK.bits(), 0);
+        let fd = libc::socket(libc::AF_INET, libc::SOCK_STREAM | SOCK_NONBLOCK.bits(), 0);
 
         if fd < 0 {
             return Err(Errno::current());
@@ -51,32 +53,41 @@ fn create_socket(addr: ip::SocketAddr) -> SysCallResult<sock_t> {
 
 
 impl Tcp {
-    pub fn connect(addr: ip::SocketAddr) -> SysCallResult<Tcp> {
-        let sock_fd = try!(create_socket(addr));
+    pub fn connect(host: &str, port: u16) -> SysCallResult<Tcp> {
 
-        let family = match addr.ip {
-            ip::Ipv4Addr(..) => libc::AF_INET,
-            ip::Ipv6Addr(..) => libc::AF_INET6
+        let hint = libc::addrinfo {
+            ai_flags: 0,
+            ai_family: libc::AF_INET,
+            ai_socktype: libc::SOCK_STREAM,
+            ai_protocol: 0,
+            ai_addrlen: 0,
+            ai_addr: ptr::null_mut(),
+            ai_canonname: ptr::null_mut(),
+            ai_next: ptr::null_mut()
         };
 
-        let s_addr = ipaddr_to_inaddr(addr.ip);
-
-        let serv_addr = libc::sockaddr_in {
-            sin_family: family as u16,
-            sin_port: addr.port,
-            sin_addr: s_addr,
-            sin_zero: unsafe { mem::zeroed() }
-        };
-
+        let result: *mut libc::addrinfo = ptr::null_mut();
         let res = unsafe {
-            libc::connect(sock_fd, mem::transmute(&serv_addr),
-                          mem::size_of::<libc::sockaddr_in>() as libc::socklen_t)
+            getaddrinfo(host.as_ptr() as *const libc::c_char, ptr::null(),
+                        mem::transmute(&hint), mem::transmute(&result))
         };
 
         if res < 0 {
-            let err = Errno::current();
+            return Err(Errno::current());
+        }
 
-            return Err(err);
+        let sock_fd = try!(create_socket());
+
+        let res_connect = unsafe {
+            libc::connect(sock_fd, (*result).ai_addr as *const libc::sockaddr,
+                          (*result).ai_addrlen as libc::socklen_t)
+        };
+
+        if res_connect < 0 {
+            let err = Errno::current();
+            if err.value() != consts::EINPROGRESS {
+                return Err(err);
+            }
         }
 
         Ok(Tcp {
@@ -85,4 +96,16 @@ impl Tcp {
         })
 
     }
+}
+
+impl AsyncEvent for Tcp {
+    fn process(&self) {
+        println!("Connected!")
+    }
+
+    fn poll_fd(&self) -> fd_t { self.fd }
+
+    fn stop(&mut self) { unsafe { libc::close(self.fd) }; }
+
+    fn flags(&self) -> IoFlag { self.events }
 }

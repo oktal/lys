@@ -60,7 +60,7 @@ impl fmt::Show for Errno {
              _             => "Unknown errno code"
          };
 
-         write!(f, "{}", desc)
+         write!(f, "{}: {}", val, desc)
     }
 }
 

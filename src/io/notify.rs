@@ -4,7 +4,7 @@ use std::mem;
 use io::errno::{SysCallResult, Errno, consts};
 use io::event_loop::EventLoop;
 
-use io::AsyncEvent;
+use io::{AsyncEvent, IoFlag, POLL_IN, POLL_OUT};
 
 extern {
     fn eventfd(init_val: c_uint, flags: c_int) -> c_int;
@@ -23,7 +23,8 @@ pub struct Notify {
     callback: OnNotify,
     active: bool,
 
-    fd: fd_t
+    fd: fd_t,
+    events: IoFlag
 }
 
 
@@ -37,7 +38,12 @@ impl Notify {
             return Err(Errno::current());
         }
 
-        Ok(Notify { callback: callback, fd: fd, active: false })
+        Ok(Notify {
+            callback: callback,
+            fd: fd,
+            active: false,
+            events: POLL_IN
+        })
     }
 
     pub fn notify(&self) -> SysCallResult<()> {
@@ -81,4 +87,6 @@ impl AsyncEvent for Notify {
     fn poll_fd(&self) -> fd_t { self.fd }
 
     fn stop(&mut self) { unsafe { close(self.fd) }; }
+
+    fn flags(&self) -> IoFlag { self.events }
 }
