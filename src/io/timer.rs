@@ -127,12 +127,12 @@ impl AsyncEvent for Timer {
                 let err = Errno::current();
                 match err.value() {
                     consts::EAGAIN => break,
-                    _ => fail!(err)
+                    _ => panic!(err)
                 }
             }
 
             if res != 8 {
-                fail!("Timer: failed to read the right number of bytes");
+                panic!("Timer: failed to read the right number of bytes");
             }
 
             (self.callback)(self, num_timeouts);

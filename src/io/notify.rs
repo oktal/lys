@@ -72,12 +72,12 @@ impl AsyncEvent for Notify {
             if res == -1 {
                 match Errno::current().value() {
                     consts::EAGAIN => break,
-                    err => fail!(err)
+                    err => panic!(err)
                 }
             }
 
             if res != 8 {
-                fail!("Notify: failed to read the right number of bytes");
+                panic!("Notify: failed to read the right number of bytes");
             }
 
             (self.callback)(self)

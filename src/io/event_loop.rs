@@ -87,7 +87,7 @@ impl<'a> EventLoop<'a> {
 
     pub fn add_event(&mut self, event: &'a AsyncEvent) {
         match self.events_queue.push(event) {
-            Err(Full) => fail!("The event queue is full"),
+            Err(Full) => panic!("The event queue is full"),
             Ok(_) => ()
         }
     }

@@ -9,10 +9,13 @@ use std::io::net::ip;
 use native::io::net::htons;
 use std::mem;
 use std::ptr;
+use std::c_str::CString;
 
 extern {
     fn getaddrinfo(node: *const libc::c_char, service: *const libc::c_char,
                    hints: *const libc::addrinfo, res: *mut *mut libc::addrinfo) -> libc::c_int;
+
+    fn gai_strerror(errorcode: libc::c_int) -> *const libc::c_char;
 }
 
 bitflags!(
@@ -68,8 +71,8 @@ impl Tcp {
 
         let result: *mut libc::addrinfo = ptr::null_mut();
         let res = unsafe {
-            getaddrinfo(host.as_ptr() as *const libc::c_char, ptr::null(),
-                        mem::transmute(&hint), mem::transmute(&result))
+            getaddrinfo(host.to_c_str().as_ptr() as *const libc::c_char, ptr::null(),
+                        &hint as *const libc::addrinfo, mem::transmute(&result))
         };
 
         if res < 0 {

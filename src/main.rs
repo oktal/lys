@@ -18,14 +18,14 @@ fn main() {
 
     let timer = match Timer::new(on_timer_event, 2) {
         Ok(timer) => timer,
-        Err(errno) => fail!(errno)
+        Err(errno) => panic!(errno)
     };
 
     ev_loop.add_event(&timer);
 
     let notify = match Notify::new(on_notify) {
         Ok(notify) => notify,
-        Err(errno) => fail!(errno)
+        Err(errno) => panic!(errno)
     };
 
     ev_loop.add_event(&notify);
@@ -33,7 +33,7 @@ fn main() {
 
     match notify.notify() {
         Ok(_) => (),
-        Err(errno) => fail!(errno)
+        Err(errno) => panic!(errno)
     }
 
     let tcp = Tcp::connect("google.com", 80).unwrap();
