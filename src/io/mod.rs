@@ -27,6 +27,12 @@ bitflags!(
     }
 )
 
+pub struct IoEvent {
+    flags: IoFlag,
+
+    data: c_int
+}
+
 mod event_loop;
 mod backend;
 mod errno;

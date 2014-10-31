@@ -10,6 +10,7 @@ use native::io::net::htons;
 use std::mem;
 use std::ptr;
 use std::c_str::CString;
+use std::cell::Cell;
 
 extern {
     fn getaddrinfo(node: *const libc::c_char, service: *const libc::c_char,
@@ -25,10 +26,13 @@ bitflags!(
     }
 )
 
+pub type OnConnect = fn(tcp: &Tcp);
+
 pub struct Tcp {
+    callback: OnConnect,
     fd: sock_t,
 
-    events: IoFlag
+    events: Cell<IoFlag>
 }
 
 //TODO: ipv6
@@ -56,7 +60,7 @@ fn create_socket() -> SysCallResult<sock_t> {
 
 
 impl Tcp {
-    pub fn connect(host: &str, port: u16) -> SysCallResult<Tcp> {
+    pub fn connect(host: &str, port: u16, callback: OnConnect) -> SysCallResult<Tcp> {
 
         let hint = libc::addrinfo {
             ai_flags: 0,
@@ -71,7 +75,9 @@ impl Tcp {
 
         let result: *mut libc::addrinfo = ptr::null_mut();
         let res = unsafe {
-            getaddrinfo(host.to_c_str().as_ptr() as *const libc::c_char, ptr::null(),
+            let service = "http".to_c_str();
+            getaddrinfo(host.to_c_str().as_ptr() as *const libc::c_char,
+                        service.as_ptr() as *const libc::c_char,
                         &hint as *const libc::addrinfo, mem::transmute(&result))
         };
 
@@ -94,8 +100,9 @@ impl Tcp {
         }
 
         Ok(Tcp {
+            callback: callback,
             fd: sock_fd,
-            events: POLL_IN | POLL_OUT
+            events: Cell::new(POLL_IN | POLL_OUT)
         })
 
     }
@@ -103,12 +110,17 @@ impl Tcp {
 
 impl AsyncEvent for Tcp {
     fn process(&self) {
-        println!("Connected!")
+        (self.callback)(self);
+        let mut events = self.events.get();
+        if events.contains(POLL_OUT) {
+            events.remove(POLL_OUT);
+            self.events.set(events);
+        }
     }
 
     fn poll_fd(&self) -> fd_t { self.fd }
 
     fn stop(&mut self) { unsafe { libc::close(self.fd) }; }
 
-    fn flags(&self) -> IoFlag { self.events }
+    fn flags(&self) -> IoFlag { self.events.get() }
 }

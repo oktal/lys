@@ -13,6 +13,10 @@ fn on_notify(notify: &Notify) {
     println!("Notified!");
 }
 
+fn on_connect(tcp: &Tcp) {
+    println!("Connected!");
+}
+
 fn main() {
     let mut ev_loop = EventLoop::default();
 
@@ -36,7 +40,7 @@ fn main() {
         Err(errno) => panic!(errno)
     }
 
-    let tcp = Tcp::connect("google.com", 80).unwrap();
+    let tcp = Tcp::connect("google.com", 80, on_connect).unwrap();
 
     ev_loop.add_event(&tcp);
 

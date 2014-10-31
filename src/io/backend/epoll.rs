@@ -1,6 +1,12 @@
 use libc::{c_int, c_void};
 use std::mem;
+use std::ptr;
 use io::errno::{SysCallResult, Errno};
+use io::{IoFlag, IoEvent, POLL_IN, POLL_OUT};
+
+use native::io::file::fd_t;
+
+use super::{Poller, ToIoFlags, FromIoFlags};
 
 extern {
     pub fn epoll_create(size: c_int) -> c_int;
@@ -40,8 +46,38 @@ bitflags!(
     }
 )
 
+impl ToIoFlags for EpollEventKind {
+    fn to_io_flags(&self) -> IoFlag {
+        let mut io_flags = IoFlag::empty();
+        if self.contains(EPOLLIN) {
+            io_flags.toggle(POLL_IN);
+        }
+
+        if self.contains(EPOLLOUT) {
+            io_flags.toggle(POLL_OUT);
+        }
+
+        return io_flags;
+    }
+}
+
+impl FromIoFlags for EpollEventKind {
+    fn from_io_flags(flags: IoFlag) -> EpollEventKind {
+        let mut epoll_flags = EpollEventKind::empty();
+        if flags.contains(POLL_IN) {
+            epoll_flags.toggle(EPOLLIN);
+        }
+
+        if flags.contains(POLL_OUT) {
+            epoll_flags.toggle(EPOLLOUT)
+        }
+
+        return epoll_flags;
+    }
+}
+
 pub struct Epoll {
-    efd: i32
+    efd: fd_t
 }
 
 impl Epoll {
@@ -54,10 +90,13 @@ impl Epoll {
 
         Ok(Epoll { efd: fd })
     }
+}
 
-    pub fn register(&self, fd: i32, flags: EpollEventKind) -> SysCallResult<()> {
+impl Poller for Epoll {
+
+    fn add_poll_list(&mut self, fd: fd_t, flags: IoFlag) -> SysCallResult<()> {
         let event = EpollEvent {
-            events: flags,
+            events: FromIoFlags::from_io_flags(flags),
             data: fd as c_int
         };
 
@@ -72,9 +111,26 @@ impl Epoll {
         Ok( () )
     }
 
-    pub fn remove(&mut self, fd: i32) -> SysCallResult<()> {
+    fn modify_poll_list(&mut self, fd: fd_t, flags: IoFlag) -> SysCallResult<()> {
+        let event = EpollEvent {
+            events: FromIoFlags::from_io_flags(flags),
+            data: fd as c_int
+        };
+
         let res = unsafe {
-            epoll_ctl(self.efd, EpollCtlDel as c_int, fd, 0 as *const EpollEvent)
+            epoll_ctl(self.efd, EpollCtlMod as c_int, fd, &event as *const EpollEvent)
+        };
+
+        if res < 0 {
+            return Err(Errno::current());
+        }
+
+        Ok ( () )
+    }
+
+    fn remove_poll_list(&mut self, fd: fd_t) -> SysCallResult<()> {
+        let res = unsafe {
+            epoll_ctl(self.efd, EpollCtlDel as c_int, fd, ptr::null())
         };
 
         if res < 0 {
@@ -84,9 +140,11 @@ impl Epoll {
         Ok( () )
     }
 
-    pub fn poll(&self, events: &mut [EpollEvent], timeout_ms: uint) -> SysCallResult<uint> {
+    fn poll(&self, timeout_ms: uint) -> SysCallResult<Vec<IoEvent>> {
+        let mut epoll_events: [EpollEvent, ..256] = unsafe { mem::uninitialized() };
+
         let res = unsafe {
-            epoll_wait(self.efd, events.as_mut_ptr(), events.len() as c_int,
+            epoll_wait(self.efd, epoll_events.as_mut_ptr(), epoll_events.len() as c_int,
                        timeout_ms as c_int)
         };
 
@@ -94,7 +152,17 @@ impl Epoll {
             return Err(Errno::current());
         }
 
-        Ok(res as uint)
+        // Here we are guaranteed that res will not be < 0. Thus, casting it to an uint is safe
+        let mut io_events = Vec::with_capacity(res as uint);
+
+        for epoll_event in epoll_events.iter().take(res as uint) {
+            io_events.push(IoEvent {
+                flags: epoll_event.events.to_io_flags(),
+                data: epoll_event.data
+            });
+        }
+
+        Ok(io_events)
     }
 
 }

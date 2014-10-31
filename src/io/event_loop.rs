@@ -1,4 +1,4 @@
-use io::backend::{epoll, EpollEventKind};
+use io::backend::{Poller, epoll, EpollEventKind};
 use utils::BoundedQueue;
 use libc::c_void;
 use std::collections::TreeMap;
@@ -26,8 +26,19 @@ pub enum BackendType {
     IOCP
 }
 
+
+fn create_poller(backend_type: BackendType) -> Box<Poller + 'static> {
+    match backend_type {
+        Select => unimplemented!(),
+        Poll => unimplemented!(),
+        Epoll => box epoll::Epoll::new(1 << 16).unwrap(),
+        Kqueue => unimplemented!(),
+        IOCP => unimplemented!()
+    }
+}
+
 pub struct EventLoop<'a> {
-    pub poller: epoll::Epoll,
+    pub poller: Box<Poller + 'static>,
 
     pub watchers: TreeMap<fd_t, &'a AsyncEvent + 'a>,
     pub events_queue: BoundedQueue<&'a AsyncEvent + 'a>
@@ -36,10 +47,9 @@ pub struct EventLoop<'a> {
 impl<'a> EventLoop<'a> {
     #[cfg(target_os = "linux")]
     pub fn default() -> EventLoop<'a> {
-        let poller = epoll::Epoll::new(1 << 16).unwrap();
 
         EventLoop {
-            poller: poller,
+            poller: create_poller(Epoll),
             watchers: TreeMap::new(),
             events_queue: BoundedQueue::new(1 << 8)
         }
@@ -55,31 +65,24 @@ impl<'a> EventLoop<'a> {
                 let fd = event.poll_fd();
                 let flags = event.flags();
 
-                let mut events: EpollEventKind = epoll::EPOLLIN;
-                if flags.contains(POLL_OUT) {
-                    events = events | epoll::EPOLLOUT;
-                }
-
-                println!("fd => {}, flags = {}", fd, events.bits());
-
-
-                self.poller.register(fd, events);
+                self.poller.add_poll_list(fd, flags);
                 self.watchers.insert(fd,  event);
             }
 
-            let mut events: [epoll::EpollEvent, ..256]
-               = unsafe { mem::uninitialized() };
+            let poll_events = self.poller.poll(consts::POLL_TIMEOUT).unwrap();
 
-            let readyCount = self.poller.poll(events, consts::POLL_TIMEOUT).unwrap();
-            for event in events.iter().take(readyCount) {
-                println!("fd {} is ready", event.data);
-                if event.events.contains(epoll::EPOLLIN) ||
-                   event.events.contains(epoll::EPOLLOUT) {
-                    let fd = event.data;
-                    match self.watchers.find(&fd) {
-                         Some(event) => event.process(),
-                         None => ()
-                    }
+            for io_event in poll_events.iter() {
+                let fd = io_event.data;
+                match self.watchers.find(&fd) {
+                     Some(event) => {
+                         let before_flags = event.flags();
+                         event.process();
+                         let after_flags = event.flags();
+                         if after_flags != before_flags {
+                             self.poller.modify_poll_list(fd, after_flags);
+                         }
+                     }
+                     None => () 
                 }
             }
         }
