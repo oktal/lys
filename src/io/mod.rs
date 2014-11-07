@@ -2,7 +2,7 @@ pub use self::event_loop::EventLoop;
 pub use self::errno::{SysCallResult, Errno};
 pub use self::timer::Timer;
 pub use self::notify::Notify;
-pub use self::tcp::Tcp;
+pub use self::tcp::{Tcp, TcpEndpoint};
 
 use native::io::file::fd_t;
 
