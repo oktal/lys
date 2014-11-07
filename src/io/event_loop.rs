@@ -5,9 +5,7 @@ use std::collections::TreeMap;
 use std::mem;
 use native::io::file::fd_t;
 
-use super::{AsyncEvent, IoFlag};
-
-// TODO: Fix all the unsafe crap
+use super::{AsyncOperation, Pollable, IoFlag, IoEvent};
 
 pub enum BackendType {
     /// Use the select() system call as a backend for the event loop
@@ -40,8 +38,8 @@ fn create_poller(backend_type: BackendType) -> Box<Poller + 'static> {
 pub struct EventLoop<'a> {
     pub poller: Box<Poller + 'static>,
 
-    pub watchers: TreeMap<fd_t, &'a AsyncEvent + 'a>,
-    pub events_queue: BoundedQueue<&'a AsyncEvent + 'a>
+    pub watchers: TreeMap<fd_t, &'a AsyncOperation + 'a>,
+    pub events_queue: BoundedQueue<&'a AsyncOperation + 'a>
 }
 
 impl<'a> EventLoop<'a> {
@@ -63,7 +61,7 @@ impl<'a> EventLoop<'a> {
             while (!self.events_queue.is_empty()) {
                 let mut event = self.events_queue.pop().ok().unwrap();
                 let fd = event.poll_fd();
-                let flags = event.flags();
+                let flags = event.poll_flags();
 
                 self.poller.add_poll_list(fd, flags);
                 self.watchers.insert(fd,  event);
@@ -72,28 +70,32 @@ impl<'a> EventLoop<'a> {
             let poll_events = self.poller.poll(consts::POLL_TIMEOUT).unwrap();
 
             for io_event in poll_events.iter() {
-                let fd = io_event.data;
-                match self.watchers.find(&fd) {
-                     Some(event) => {
-                         let before_flags = event.flags();
-                         event.process();
-                         let after_flags = event.flags();
-                         if after_flags != before_flags {
-                             self.poller.modify_poll_list(fd, after_flags);
-                         }
-                     }
-                     None => () 
-                }
+                self.process_event(io_event);
             }
         }
     }
 
-    pub fn add_event(&mut self, event: &'a AsyncEvent) {
+    pub fn add_event(&mut self, event: &'a AsyncOperation) {
         match self.events_queue.push(event) {
             Err(Full) => panic!("The event queue is full"),
             Ok(_) => ()
         }
     }
+
+    fn process_event(&mut self, event: &IoEvent) {
+        let fd = event.data;
+        match self.watchers.find(&fd) {
+             Some(watcher) => {
+                 let flags = event.flags;
+                 let new_flags = watcher.process(flags);
+                 if flags != new_flags {
+                     self.poller.modify_poll_list(fd, new_flags);
+                 }
+             }
+             None => () 
+        }
+    }
+
 }
 
 mod consts {

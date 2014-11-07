@@ -8,14 +8,16 @@ use native::io::file::fd_t;
 
 use libc::c_int;
 
-pub trait AsyncEvent {
-    fn process(&self);
-
+pub trait Pollable {
     fn poll_fd(&self) -> fd_t;
 
-    fn stop(&mut self);
+    fn poll_flags(&self) -> IoFlag;
+}
 
-    fn flags(&self) -> IoFlag;
+pub trait AsyncOperation : Pollable {
+    fn process(&self, flags: IoFlag) -> IoFlag;
+
+    fn stop(&mut self);
 }
 
 bitflags!(

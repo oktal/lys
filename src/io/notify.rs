@@ -4,7 +4,7 @@ use std::mem;
 use io::errno::{SysCallResult, Errno, consts};
 use io::event_loop::EventLoop;
 
-use io::{AsyncEvent, IoFlag, POLL_IN, POLL_OUT};
+use io::{AsyncOperation, Pollable, IoFlag, POLL_IN, POLL_OUT};
 
 extern {
     fn eventfd(init_val: c_uint, flags: c_int) -> c_int;
@@ -61,8 +61,8 @@ impl Notify {
     }
 }
 
-impl AsyncEvent for Notify {
-    fn process(&self) {
+impl AsyncOperation for Notify {
+    fn process(&self, flags: IoFlag) -> IoFlag {
         let value: u64 = 0;
         loop {
             let res = unsafe {
@@ -82,11 +82,17 @@ impl AsyncEvent for Notify {
 
             (self.callback)(self)
         }
-    }
 
-    fn poll_fd(&self) -> fd_t { self.fd }
+        self.events
+    }
 
     fn stop(&mut self) { unsafe { close(self.fd) }; }
 
-    fn flags(&self) -> IoFlag { self.events }
 }
+
+impl Pollable for Notify {
+    fn poll_fd(&self) -> fd_t { self.fd }
+
+    fn poll_flags(&self) -> IoFlag { self.events }
+}
+

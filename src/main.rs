@@ -1,12 +1,11 @@
 extern crate lys;
 
-use lys::io::{AsyncEvent, Timer, Notify, EventLoop, Tcp};
+use lys::io::{AsyncOperation, Pollable, Timer, Notify, EventLoop, Tcp};
 
 use std::io::net::ip::{SocketAddr, Ipv4Addr};
 
 fn on_timer_event(timer: &Timer, num_timeouts: u64) {
-     let timer_event = timer as &AsyncEvent;
-     println!("Timeout! -> {}", timer_event.poll_fd());
+     println!("Timeout! -> {}", timer.poll_fd());
 }
 
 fn on_notify(notify: &Notify) {

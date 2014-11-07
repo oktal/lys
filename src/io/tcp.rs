@@ -1,7 +1,7 @@
 use native::io::file::fd_t;
 use native::io::net::sock_t;
 use io::errno::{SysCallResult, Errno, consts};
-use super::{AsyncEvent, IoFlag, POLL_IN, POLL_OUT};
+use super::{AsyncOperation, Pollable, IoFlag, POLL_IN, POLL_OUT};
 
 use libc;
 
@@ -108,19 +108,25 @@ impl Tcp {
     }
 }
 
-impl AsyncEvent for Tcp {
-    fn process(&self) {
+impl AsyncOperation for Tcp {
+    fn process(&self, flags: IoFlag) -> IoFlag {
         (self.callback)(self);
         let mut events = self.events.get();
         if events.contains(POLL_OUT) {
             events.remove(POLL_OUT);
             self.events.set(events);
         }
-    }
 
-    fn poll_fd(&self) -> fd_t { self.fd }
+        self.events.get()
+    }
 
     fn stop(&mut self) { unsafe { libc::close(self.fd) }; }
 
-    fn flags(&self) -> IoFlag { self.events.get() }
 }
+
+impl Pollable for Tcp {
+    fn poll_fd(&self) -> fd_t { self.fd }
+
+    fn poll_flags(&self) -> IoFlag { self.events.get() }
+}
+
