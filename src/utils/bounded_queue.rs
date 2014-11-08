@@ -1,6 +1,5 @@
 use std::vec::Vec;
 use std::result::Result;
-use std::collections::{Collection, Mutable};
 
 pub struct BoundedQueue<T> {
     data: Vec<Option<T>>,
@@ -36,7 +35,7 @@ impl<T> BoundedQueue<T> {
          }
 
          let index = self.write_index;
-         *self.data.get_mut(index) = Some(value);
+         *self.data.index_mut(&index) = Some(value);
          self.write_index = (self.write_index + 1) % self.size;
          self.len += 1;
 
@@ -48,7 +47,7 @@ impl<T> BoundedQueue<T> {
              return Err(Empty);
          }
 
-         let value = self.data.get_mut(self.read_index).take().unwrap();
+         let value = self.data.index_mut(&self.read_index).take().unwrap();
 
          self.read_index = (self.read_index + 1) % self.size;
          self.len -= 1;
@@ -57,24 +56,19 @@ impl<T> BoundedQueue<T> {
 
      }
      
-     pub fn is_full(&self) -> bool {
+    pub fn is_full(&self) -> bool {
          (self.write_index + 1) % self.size == self.read_index
      }
 
-}
-
-impl<T> Collection for BoundedQueue<T> {
-    fn len(&self) -> uint {
+    pub fn len(&self) -> uint {
         self.len
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.write_index == self.read_index
     }
-}
 
-impl<T> Mutable for BoundedQueue<T> {
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.len = 0;
         self.write_index = 0;
         self.read_index = 0;
