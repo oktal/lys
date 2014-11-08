@@ -1,7 +1,9 @@
 use native::io::file::fd_t;
 use native::io::net::sock_t;
-use io::errno::{SysCallResult, Errno, consts};
+use io::errno::{SysCallResult, Errno};
 use super::{AsyncOperation, Pollable, IoFlag, POLL_IN, POLL_OUT};
+
+use io::errno;
 
 use libc;
 
@@ -100,8 +102,8 @@ impl Tcp {
         let result: *mut libc::addrinfo = ptr::null_mut();
         let res = unsafe {
             let service = "http".to_c_str();
-            getaddrinfo(host.to_c_str().as_ptr() as *const libc::c_char,
-                        service.as_ptr() as *const libc::c_char,
+            getaddrinfo(host.to_c_str().as_ptr(),
+                        service.as_ptr(),
                         &hint as *const libc::addrinfo, mem::transmute(&result))
         };
 
@@ -118,7 +120,7 @@ impl Tcp {
 
         if res_connect < 0 {
             let err = Errno::current();
-            if err.value() != consts::EINPROGRESS {
+            if err.value() != errno::consts::EINPROGRESS {
                 return Err(err);
             }
         }
@@ -181,7 +183,7 @@ impl TcpEndpoint {
 
     pub fn listen(&self) -> SysCallResult<()> {
         let res = unsafe {
-            libc::listen(self.fd, default::LISTEN_BACKLOG as i32)
+            libc::listen(self.fd, consts::LISTEN_BACKLOG as i32)
         };
 
         if res < 0 {
@@ -218,56 +220,70 @@ impl Pollable for Tcp {
 impl AsyncOperation for TcpEndpoint {
     fn process(&self, flags: IoFlag) -> IoFlag {
         loop {
-            let mut in_addr = libc::sockaddr {
-                sa_family: libc::AF_INET as libc::sa_family_t,
-                sa_data: unsafe { mem::zeroed() }
+            let mut peer_addr = libc::sockaddr_in {
+                sin_family: libc::AF_INET as libc::sa_family_t,
+                sin_port: 0,
+                sin_addr: unsafe { mem::zeroed() },
+                sin_zero: unsafe { mem::zeroed() }
             };
 
-            let mut in_len: libc::socklen_t = 0;
+            let mut peer_addr_len: libc::socklen_t = 0;
 
             let res = unsafe {
-                libc::accept(self.fd, mem::transmute(&in_addr), mem::transmute(&in_len))
+                libc::accept(self.fd, mem::transmute(&mut peer_addr), &mut peer_addr_len)
             };
 
             if res < 0 {
                 let errno = Errno::current();
                 match errno.value() {
-                    consts::EAGAIN => break,
+                    errno::consts::EAGAIN => break,
                     _ => println!("Error when accepting connection")
                 }
             }
 
-            let mut host = String::with_capacity(default::NI_MAXHOST);
-            let mut serv = String::with_capacity(default::NI_MAXSERV);
+            let name_info = unsafe {
+                /* Note that we will pay the cost of extra memory allocations here since
+                 * to_c_str() allocates a new buffer (creates a copy).
+                 * We also pay the cost of an extra allocation when converting back the
+                 * CString to String. Unforunately, this is the only way to get a *mut c_char
+                 * out of a String at moment
+                 */
+                let mut host = String::with_capacity(consts::NI_MAXHOST);
+                let mut serv = String::with_capacity(consts::NI_MAXSERV);
 
-            let res_ninfo = unsafe {
                 let mut c_host = host.to_c_str();
                 let mut c_serv = host.to_c_str();
 
-                getnameinfo(mem::transmute(&in_addr), in_len,
-                            c_host.as_mut_ptr() as *mut libc::c_char,
-                            default::NI_MAXHOST as libc::size_t,
-                            c_serv.as_mut_ptr() as *mut libc::c_char,
-                            default::NI_MAXSERV as libc::size_t,
-                            (NI_NUMERICHOST | NI_NUMERICSERV).bits())
+                let res = getnameinfo(mem::transmute(&peer_addr), peer_addr_len,
+                            c_host.as_mut_ptr(),
+                            consts::NI_MAXHOST as libc::size_t,
+                            c_serv.as_mut_ptr(),
+                            consts::NI_MAXSERV as libc::size_t,
+                            NI_NAMEREQD.bits());
+
+                (res, c_host.as_str().unwrap().to_string(),
+                      c_serv.as_str().unwrap().to_string())
             };
 
-            let mut peer_name = String::with_capacity(default::NI_MAXHOST);
+            let (_, host_name, serv_name) = name_info;
 
-            let ntop_res = unsafe {
+            let peer_info = unsafe {
+                let mut peer_name = String::with_capacity(consts::INET_ADDRSTRLEN);
                 let mut c_peer_name = peer_name.to_c_str();
-                inet_ntop(libc::AF_INET as libc::c_int, mem::transmute(&in_addr),
-                          c_peer_name.as_mut_ptr() as *mut libc::c_char, default::NI_MAXHOST as
-                          libc::socklen_t)
+
+                let res = inet_ntop(libc::AF_INET as libc::c_int,
+                                    &peer_addr.sin_addr as *const libc::in_addr as *const libc::c_void,
+                                    c_peer_name.as_mut_ptr(),
+                                    consts::INET_ADDRSTRLEN as libc::socklen_t);
+
+                (res, c_peer_name.as_str().unwrap().to_string())
             };
 
-            if ntop_res == ptr::null() {
-                println!("Hue");
-            }
+            let (_, peer_name) = peer_info;
 
             println!("peer_name -> {}", peer_name);
-            println!("host -> {}", host);
-            println!("serv -> {}", serv);
+            println!("host_name -> {}", host_name);
+            println!("serv_name -> {}", serv_name);
 
             (self.on_connection)(self);
         }
@@ -284,9 +300,11 @@ impl Pollable for TcpEndpoint {
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
-mod default {
-    pub const LISTEN_BACKLOG: uint = 1 << 4;
+mod consts {
+    pub const LISTEN_BACKLOG  : uint = 1 << 4;
 
-    pub const NI_MAXHOST    : uint = 1025;
-    pub const NI_MAXSERV    : uint = 32;
+    pub const NI_MAXHOST      : uint = 1025;
+    pub const NI_MAXSERV      : uint = 32;
+
+    pub const INET_ADDRSTRLEN : uint = 16;
 }
