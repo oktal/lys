@@ -1,19 +1,8 @@
 extern crate lys;
-extern crate libc;
-
-use std::mem;
 
 use lys::io::{AsyncOperation, Pollable, Timer, Notify, EventLoop, Tcp, TcpEndpoint};
 
 use std::io::net::ip::{SocketAddr, Ipv4Addr};
-
-extern {
-    fn inet_pton(af: libc::c_int, src: *const libc::c_char, dst: *mut libc::c_void)
-        -> libc::c_int;
-
-    fn inet_ntop(af: libc::c_int, src: *const libc::c_void, dst: *mut libc::c_char,
-                 size: libc::socklen_t) -> *const libc::c_char;
-}
 
 fn on_timer_event(timer: &Timer, num_timeouts: u64) {
      println!("Timeout! -> {}", timer.poll_fd());
