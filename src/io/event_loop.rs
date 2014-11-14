@@ -5,7 +5,7 @@ use std::collections::TreeMap;
 use std::mem;
 use native::io::file::fd_t;
 
-use super::{AsyncOperation, Pollable, IoFlag, IoEvent};
+use super::{Async, Pollable, AsyncReadable, AsyncWritable, IoFlag, IoEvent};
 
 pub enum BackendType {
     /// Use the select() system call as a backend for the event loop
@@ -38,8 +38,8 @@ fn create_poller(backend_type: BackendType) -> Box<Poller + 'static> {
 pub struct EventLoop<'a> {
     pub poller: Box<Poller + 'static>,
 
-    pub watchers: TreeMap<fd_t, &'a AsyncOperation + 'a>,
-    pub events_queue: BoundedQueue<&'a AsyncOperation + 'a>
+    pub watchers: TreeMap<fd_t, &'a Async + 'a>,
+    pub events_queue: BoundedQueue<&'a Async + 'a>
 }
 
 impl<'a> EventLoop<'a> {
@@ -54,8 +54,6 @@ impl<'a> EventLoop<'a> {
     }
 
     pub fn run(&mut self) {
-        use super::{POLL_IN, POLL_OUT};
-
         loop {
             // First we dequeue all the events and add them to the loop
             while (!self.events_queue.is_empty()) {
@@ -75,7 +73,7 @@ impl<'a> EventLoop<'a> {
         }
     }
 
-    pub fn add_event(&mut self, event: &'a AsyncOperation) {
+    pub fn add_event(&mut self, event: &'a Async) {
         match self.events_queue.push(event) {
             Err(Full) => panic!("The event queue is full"),
             Ok(_) => ()
@@ -83,16 +81,31 @@ impl<'a> EventLoop<'a> {
     }
 
     fn process_event(&mut self, event: &IoEvent) {
+        use super::{POLL_IN, POLL_OUT};
+
         let fd = event.data;
-        match self.watchers.find(&fd) {
-             Some(watcher) => {
-                 let flags = event.flags;
-                 let new_flags = watcher.process(flags);
-                 if flags != new_flags {
-                     self.poller.modify_poll_list(fd, new_flags);
-                 }
-             }
-             None => () 
+        let watcher = self.watchers.find(&fd).unwrap();
+        let flags = event.flags;
+        if flags.contains(POLL_IN) {
+            if !watcher.is_readable() {
+                panic!("Recevied a POLL_IN on a non-readable event")
+            }
+
+            watcher.handle_read();
+        }
+
+        if flags.contains(POLL_OUT) {
+            if !watcher.is_writable() {
+                panic!("Received a POLL_OUT a non-writable event")
+            }
+
+            watcher.handle_write();
+        }
+
+        let new_flags = watcher.poll_flags();
+
+        if flags != new_flags {
+            self.poller.modify_poll_list(fd, new_flags);
         }
     }
 

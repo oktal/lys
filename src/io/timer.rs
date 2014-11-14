@@ -4,7 +4,7 @@ use libc::{c_int, c_void, time_t, size_t, timespec, read, close, CLOCK_MONOTONIC
 use native::io::file::fd_t;
 use io::event_loop::EventLoop;
 use io::errno::{SysCallResult, Errno, consts};
-use super::{AsyncOperation, Pollable, IoFlag, POLL_IN, POLL_OUT};
+use super::{Async, Pollable, AsyncReadable, AsyncWritable, IoFlag, POLL_IN, POLL_OUT};
 
 #[repr(C, packed)]
 struct TimerSpec {
@@ -115,8 +115,8 @@ impl Timer {
 
 }
 
-impl AsyncOperation for Timer {
-    fn process(&self, flags: IoFlag) -> IoFlag {
+impl AsyncReadable for Timer {
+    fn handle_read(&self) {
 
         let mut num_timeouts: u64 = 0;
         loop {
@@ -139,11 +139,11 @@ impl AsyncOperation for Timer {
             break;
         }
 
-        self.events
-
     }
+}
 
-    fn stop(&mut self) { unsafe { close(self.fd) }; }
+impl AsyncWritable for Timer {
+    fn handle_write(&self) { }
 }
 
 impl Pollable for Timer {
@@ -152,4 +152,8 @@ impl Pollable for Timer {
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
+impl Async for Timer {
+    fn is_readable(&self) -> bool { true }
 
+    fn is_writable(&self) -> bool { false }
+}

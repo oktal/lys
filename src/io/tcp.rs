@@ -1,7 +1,9 @@
 use native::io::file::fd_t;
 use native::io::net::sock_t;
 use io::errno::{SysCallResult, Errno};
-use super::{AsyncOperation, Pollable, IoFlag, POLL_IN, POLL_OUT};
+use super::{Async, AsyncReadable, AsyncWritable, Pollable, IoFlag, POLL_IN, POLL_OUT};
+
+use io::EventLoop;
 
 use io::errno;
 
@@ -12,7 +14,9 @@ use native::io::net::htons;
 use std::mem;
 use std::ptr;
 use std::c_str::CString;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+
+use std::iter::Iterator;
 
 extern {
     fn getaddrinfo(node: *const libc::c_char, service: *const libc::c_char,
@@ -135,6 +139,7 @@ impl Tcp {
 
 }
 
+
 pub struct TcpEndpoint {
     fd: fd_t,
     events: IoFlag,
@@ -193,23 +198,14 @@ impl TcpEndpoint {
         Ok( () )
     }
 
-}
-
-impl AsyncOperation for Tcp {
-    fn process(&self, flags: IoFlag) -> IoFlag {
-        (self.callback)(self);
-        let mut events = self.events.get();
-        if events.contains(POLL_OUT) {
-            events.remove(POLL_OUT);
-            self.events.set(events);
+    pub fn accept<'a>(&'a self) -> EstablishedConnections<'a> {
+        EstablishedConnections {
+            endpoint: self
         }
-
-        self.events.get()
     }
 
-    fn stop(&mut self) { unsafe { libc::close(self.fd) }; }
-
 }
+
 
 impl Pollable for Tcp {
     fn poll_fd(&self) -> fd_t { self.fd }
@@ -217,81 +213,25 @@ impl Pollable for Tcp {
     fn poll_flags(&self) -> IoFlag { self.events.get() }
 }
 
-impl AsyncOperation for TcpEndpoint {
-    fn process(&self, flags: IoFlag) -> IoFlag {
-        loop {
-            let mut peer_addr = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
-                sin_port: 0,
-                sin_addr: unsafe { mem::zeroed() },
-                sin_zero: unsafe { mem::zeroed() }
-            };
+impl Async for Tcp {
+    fn is_readable(&self) -> bool { true }
 
-            let mut peer_addr_len: libc::socklen_t = 0;
+    fn is_writable(&self) -> bool { true }
+}
 
-            let res = unsafe {
-                libc::accept(self.fd, mem::transmute(&mut peer_addr), &mut peer_addr_len)
-            };
-
-            if res < 0 {
-                let errno = Errno::current();
-                match errno.value() {
-                    errno::consts::EAGAIN => break,
-                    _ => println!("Error when accepting connection")
-                }
-            }
-
-            let name_info = unsafe {
-                /* Note that we will pay the cost of extra memory allocations here since
-                 * to_c_str() allocates a new buffer (creates a copy).
-                 * We also pay the cost of an extra allocation when converting back the
-                 * CString to String. Unforunately, this is the only way to get a *mut c_char
-                 * out of a String at moment
-                 */
-                let mut host = String::with_capacity(consts::NI_MAXHOST);
-                let mut serv = String::with_capacity(consts::NI_MAXSERV);
-
-                let mut c_host = host.to_c_str();
-                let mut c_serv = host.to_c_str();
-
-                let res = getnameinfo(mem::transmute(&peer_addr), peer_addr_len,
-                            c_host.as_mut_ptr(),
-                            consts::NI_MAXHOST as libc::size_t,
-                            c_serv.as_mut_ptr(),
-                            consts::NI_MAXSERV as libc::size_t,
-                            NI_NAMEREQD.bits());
-
-                (res, c_host.as_str().unwrap().to_string(),
-                      c_serv.as_str().unwrap().to_string())
-            };
-
-            let (_, host_name, serv_name) = name_info;
-
-            let peer_info = unsafe {
-                let mut peer_name = String::with_capacity(consts::INET_ADDRSTRLEN);
-                let mut c_peer_name = peer_name.to_c_str();
-
-                let res = inet_ntop(libc::AF_INET as libc::c_int,
-                                    &peer_addr.sin_addr as *const libc::in_addr as *const libc::c_void,
-                                    c_peer_name.as_mut_ptr(),
-                                    consts::INET_ADDRSTRLEN as libc::socklen_t);
-
-                (res, c_peer_name.as_str().unwrap().to_string())
-            };
-
-            let (_, peer_name) = peer_info;
-
-            println!("peer_name -> {}", peer_name);
-            println!("host_name -> {}", host_name);
-            println!("serv_name -> {}", serv_name);
-
-            (self.on_connection)(self);
+impl AsyncWritable for Tcp {
+    fn handle_write(&self) {
+        (self.callback)(self);
+        let mut events = self.events.get();
+        if events.contains(POLL_OUT) {
+            events.remove(POLL_OUT);
+            self.events.set(events);
         }
-
-        self.events
     }
+}
 
-    fn stop(&mut self) { }
+impl AsyncReadable for Tcp {
+    fn handle_read(&self) { }
 }
 
 impl Pollable for TcpEndpoint {
@@ -300,6 +240,140 @@ impl Pollable for TcpEndpoint {
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
+impl Async for TcpEndpoint {
+    fn is_readable(&self) -> bool { true }
+
+    fn is_writable(&self) -> bool { false }
+}
+
+impl AsyncReadable for TcpEndpoint {
+    fn handle_read(&self) {
+        (self.on_connection)(self);
+    }
+
+}
+
+impl AsyncWritable for TcpEndpoint {
+    fn handle_write(&self) { }
+}
+
+pub struct TcpSocket {
+    fd: fd_t,
+    events: IoFlag
+}
+
+pub struct EstablishedConnections<'a> {
+    endpoint: &'a TcpEndpoint
+}
+
+impl<'a> EstablishedConnections<'a> {
+    pub fn new(endpoint: &'a TcpEndpoint) -> EstablishedConnections<'a> {
+        EstablishedConnections {
+            endpoint: endpoint
+        }
+    }
+}
+
+
+impl<'a> Iterator<TcpSocket> for EstablishedConnections<'a> {
+    fn next(&mut self) -> Option<TcpSocket> {
+        let mut peer_addr = libc::sockaddr_in {
+            sin_family: libc::AF_INET as libc::sa_family_t,
+            sin_port: 0,
+            sin_addr: unsafe { mem::zeroed() },
+            sin_zero: unsafe { mem::zeroed() }
+        };
+
+        let mut peer_addr_len: libc::socklen_t = 0;
+
+        let res = unsafe {
+            libc::accept(self.endpoint.fd, mem::transmute(&mut peer_addr), &mut peer_addr_len)
+        };
+
+        if res < 0 {
+            let errno = Errno::current();
+            match errno.value() {
+                errno::consts::EAGAIN => return None,
+                _ => println!("Error when accepting connection")
+            }
+        }
+
+        let name_info = unsafe {
+            /* Note that we will pay the cost of extra memory allocations here since
+             * to_c_str() allocates a new buffer (creates a copy).
+             * We also pay the cost of an extra allocation when converting back the
+             * CString to String. Unforunately, this is the only way to get a *mut c_char
+             * out of a String at moment
+             */
+            let mut host = String::with_capacity(consts::NI_MAXHOST);
+            let mut serv = String::with_capacity(consts::NI_MAXSERV);
+
+            let mut c_host = host.to_c_str();
+            let mut c_serv = host.to_c_str();
+
+            let res = getnameinfo(mem::transmute(&peer_addr), peer_addr_len,
+                        c_host.as_mut_ptr(),
+                        consts::NI_MAXHOST as libc::size_t,
+                        c_serv.as_mut_ptr(),
+                        consts::NI_MAXSERV as libc::size_t,
+                        NI_NAMEREQD.bits());
+
+            (res, c_host.as_str().unwrap().to_string(),
+                  c_serv.as_str().unwrap().to_string())
+        };
+
+        let (_, host_name, serv_name) = name_info;
+
+        let peer_info = unsafe {
+            let mut peer_name = String::with_capacity(consts::INET_ADDRSTRLEN);
+            let mut c_peer_name = peer_name.to_c_str();
+
+            let res = inet_ntop(libc::AF_INET as libc::c_int,
+                                &peer_addr.sin_addr as *const libc::in_addr as *const libc::c_void,
+                                c_peer_name.as_mut_ptr(),
+                                consts::INET_ADDRSTRLEN as libc::socklen_t);
+
+            (res, c_peer_name.as_str().unwrap().to_string())
+        };
+
+        let (_, peer_name) = peer_info;
+
+        println!("peer_name -> {}", peer_name);
+        println!("host_name -> {}", host_name);
+        println!("serv_name -> {}", serv_name);
+
+        Some(TcpSocket{ fd: res as fd_t, events: POLL_IN })
+
+    }
+}
+
+impl Pollable for TcpSocket {
+    fn poll_fd(&self) -> fd_t { self.fd }
+
+    fn poll_flags(&self) -> IoFlag { self.events }
+}
+
+impl AsyncReadable for TcpSocket {
+    fn handle_read(&self) {
+        let buffer : &mut[libc::c_char, ..consts::READ_BUFFER_SIZE] = unsafe { mem::zeroed() };
+        let res = unsafe {
+            libc::read(self.fd as libc::c_int, buffer.as_ptr() as *mut libc::c_void,
+                       consts::READ_BUFFER_SIZE as libc::size_t)
+        };
+    }
+}
+
+impl AsyncWritable for TcpSocket {
+    fn handle_write(&self) { }
+}
+
+impl Async for TcpSocket {
+    fn is_readable(&self) -> bool { true }
+
+    fn is_writable(&self) -> bool { false }
+}
+
+
 mod consts {
     pub const LISTEN_BACKLOG  : uint = 1 << 4;
 
@@ -307,4 +381,6 @@ mod consts {
     pub const NI_MAXSERV      : uint = 32;
 
     pub const INET_ADDRSTRLEN : uint = 16;
+
+    pub const READ_BUFFER_SIZE : uint = 512;
 }

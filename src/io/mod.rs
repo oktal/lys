@@ -14,11 +14,20 @@ pub trait Pollable {
     fn poll_flags(&self) -> IoFlag;
 }
 
-pub trait AsyncOperation : Pollable {
-    fn process(&self, flags: IoFlag) -> IoFlag;
-
-    fn stop(&mut self);
+pub trait AsyncReadable {
+    fn handle_read(&self);
 }
+
+pub trait AsyncWritable {
+    fn handle_write(&self);
+}
+
+pub trait Async : Pollable + AsyncReadable + AsyncWritable {
+    fn is_readable(&self) -> bool;
+
+    fn is_writable(&self) -> bool;
+}
+
 
 bitflags!(
     flags IoFlag: c_int {
