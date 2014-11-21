@@ -3,6 +3,7 @@
 #![license = "MIT"]
 #![crate_type = "rlib"]
 #![feature(macro_rules, phase, globs)]
+#![feature(unboxed_closures)]
 
 extern crate libc;
 extern crate native;

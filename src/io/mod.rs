@@ -2,11 +2,11 @@ pub use self::event_loop::EventLoop;
 pub use self::errno::{SysCallResult, Errno};
 pub use self::timer::Timer;
 pub use self::notify::Notify;
-pub use self::tcp::{Tcp, TcpEndpoint};
-
-use native::io::file::fd_t;
 
 use libc::c_int;
+
+pub type fd_t = c_int;
+pub type sock_t = c_int;
 
 pub trait Pollable {
     fn poll_fd(&self) -> fd_t;
@@ -14,20 +14,9 @@ pub trait Pollable {
     fn poll_flags(&self) -> IoFlag;
 }
 
-pub trait AsyncReadable {
-    fn handle_read(&self);
+pub trait AsyncIoProvider : Pollable {
+    fn handle_event(&self, event: &IoEvent);
 }
-
-pub trait AsyncWritable {
-    fn handle_write(&self);
-}
-
-pub trait Async : Pollable + AsyncReadable + AsyncWritable {
-    fn is_readable(&self) -> bool;
-
-    fn is_writable(&self) -> bool;
-}
-
 
 bitflags!(
     flags IoFlag: c_int {
@@ -40,8 +29,17 @@ bitflags!(
 
 pub struct IoEvent {
     flags: IoFlag,
-
     data: c_int
+}
+
+impl IoEvent {
+    fn is_readable(&self) -> bool {
+        self.flags.contains(POLL_IN)
+    }
+
+    fn is_writable(&self) -> bool {
+        self.flags.contains(POLL_OUT)
+    }
 }
 
 mod event_loop;
@@ -49,4 +47,4 @@ mod backend;
 mod errno;
 mod timer;
 mod notify;
-mod tcp;
+pub mod tcp;

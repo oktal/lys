@@ -1,16 +1,14 @@
-use native::io::file::fd_t;
-use native::io::net::sock_t;
 use io::errno::{SysCallResult, Errno};
-use super::{Async, AsyncReadable, AsyncWritable, Pollable, IoFlag, POLL_IN, POLL_OUT};
+use io::{AsyncIoProvider, Pollable, IoEvent, IoFlag, POLL_IN, POLL_OUT};
 
 use io::EventLoop;
-
-use io::errno;
+use io::{fd_t, sock_t};
 
 use libc;
 
+use io::errno;
+
 use std::io::net::ip;
-use native::io::net::htons;
 use std::mem;
 use std::ptr;
 use std::c_str::CString;
@@ -18,7 +16,11 @@ use std::cell::{Cell, RefCell};
 
 use std::iter::Iterator;
 
+use std::ops::Fn;
+
 extern {
+    fn htons(hostshort: u16) -> u16;
+
     fn getaddrinfo(node: *const libc::c_char, service: *const libc::c_char,
                    hints: *const libc::addrinfo, res: *mut *mut libc::addrinfo) -> libc::c_int;
 
@@ -56,7 +58,7 @@ bitflags!(
 )
 
 pub type OnConnect = fn(tcp: &Tcp);
-pub type OnNewConnection = fn(endpoint: &TcpEndpoint);
+pub type OnNewConnection = Fn<(), ()> + 'static;
 
 pub struct Tcp {
     callback: OnConnect,
@@ -140,22 +142,29 @@ impl Tcp {
 }
 
 
-pub struct TcpEndpoint {
+pub struct TcpEndpoint<'a> {
     fd: fd_t,
     events: IoFlag,
 
-    on_connection: OnNewConnection
+    on_connection: &'a OnNewConnection
+}
+
+struct NullConnectionHandler;
+
+impl Fn<(), ()> for NullConnectionHandler {
+    fn call(&self) {
+    }
 }
 
 impl TcpEndpoint {
-    pub fn bind(host: &str, port: u16, on_connection: OnNewConnection)
+    pub fn bind(host: &str, port: u16)
         -> SysCallResult<TcpEndpoint> {
 
         let sock_fd = try!(create_socket());
 
         let mut addr = libc::sockaddr_in {
             sin_family: libc::AF_INET as libc::sa_family_t,
-            sin_port: htons(port),
+            sin_port: unsafe { htons(port) },
             sin_addr: unsafe { mem::zeroed() },
             sin_zero: unsafe { mem::zeroed() }
         };
@@ -182,11 +191,11 @@ impl TcpEndpoint {
         Ok(TcpEndpoint {
             fd: sock_fd,
             events: POLL_IN,
-            on_connection: on_connection
+            on_connection: NullConnectionHandler
         })
     }
 
-    pub fn listen(&self) -> SysCallResult<()> {
+    pub fn listen(&mut self, on_connection: OnNewConnection) -> SysCallResult<()> {
         let res = unsafe {
             libc::listen(self.fd, consts::LISTEN_BACKLOG as i32)
         };
@@ -194,6 +203,8 @@ impl TcpEndpoint {
         if res < 0 {
             return Err(Errno::current());
         }
+
+        self.on_connection = on_connection;
 
         Ok( () )
     }
@@ -213,14 +224,8 @@ impl Pollable for Tcp {
     fn poll_flags(&self) -> IoFlag { self.events.get() }
 }
 
-impl Async for Tcp {
-    fn is_readable(&self) -> bool { true }
-
-    fn is_writable(&self) -> bool { true }
-}
-
-impl AsyncWritable for Tcp {
-    fn handle_write(&self) {
+impl AsyncIoProvider for Tcp {
+    fn handle_event(&self, event: &IoEvent) {
         (self.callback)(self);
         let mut events = self.events.get();
         if events.contains(POLL_OUT) {
@@ -230,31 +235,18 @@ impl AsyncWritable for Tcp {
     }
 }
 
-impl AsyncReadable for Tcp {
-    fn handle_read(&self) { }
-}
-
 impl Pollable for TcpEndpoint {
     fn poll_fd(&self) -> fd_t { self.fd }
 
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
-impl Async for TcpEndpoint {
-    fn is_readable(&self) -> bool { true }
-
-    fn is_writable(&self) -> bool { false }
-}
-
-impl AsyncReadable for TcpEndpoint {
-    fn handle_read(&self) {
-        (self.on_connection)(self);
+impl AsyncIoProvider for TcpEndpoint {
+    fn handle_event(&self, event: &IoEvent) {
+        let on_connection = self.on_connection.unwrap();
+        (on_connection)();
     }
 
-}
-
-impl AsyncWritable for TcpEndpoint {
-    fn handle_write(&self) { }
 }
 
 pub struct TcpSocket {
@@ -353,8 +345,8 @@ impl Pollable for TcpSocket {
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
-impl AsyncReadable for TcpSocket {
-    fn handle_read(&self) {
+impl AsyncIoProvider for TcpSocket {
+    fn handle_event(&self, event: &IoEvent) {
         let buffer : &mut[libc::c_char, ..consts::READ_BUFFER_SIZE] = unsafe { mem::zeroed() };
         let res = unsafe {
             libc::read(self.fd as libc::c_int, buffer.as_ptr() as *mut libc::c_void,
@@ -362,17 +354,6 @@ impl AsyncReadable for TcpSocket {
         };
     }
 }
-
-impl AsyncWritable for TcpSocket {
-    fn handle_write(&self) { }
-}
-
-impl Async for TcpSocket {
-    fn is_readable(&self) -> bool { true }
-
-    fn is_writable(&self) -> bool { false }
-}
-
 
 mod consts {
     pub const LISTEN_BACKLOG  : uint = 1 << 4;

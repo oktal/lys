@@ -5,7 +5,7 @@ use self::consts::*;
 
 // From http://www.virtsync.com/c-error-codes-include-errno
 
-pub struct Errno(int);
+pub struct Errno(uint);
 
 pub type SysCallResult<T> = result::Result<T, Errno>;
 
@@ -98,7 +98,7 @@ impl Errno {
          Errno(os::errno())
      }
 
-    pub fn value(&self) -> int {
+    pub fn value(&self) -> uint {
         let &Errno(val) = self;
 
         val
@@ -106,78 +106,78 @@ impl Errno {
 }
 
 pub mod consts {
-     pub const EPERM        : int = 1;
-     pub const ENOENT       : int = 2;
-     pub const ESRCH        : int = 3;
-     pub const EINTR        : int = 4;
-     pub const EIO          : int = 5;
-     pub const ENXIO        : int = 6;
-     pub const E2BIG        : int = 7;
-     pub const ENOEXEC      : int = 8;
-     pub const EBADF        : int = 9;
-     pub const ECHILD       : int = 10;
-     pub const EAGAIN       : int = 11;
-     pub const ENOMEM       : int = 12;
-     pub const EACCESS      : int = 13;
-     pub const EFAULT       : int = 14;
-     pub const ENOTBLK      : int = 15;
-     pub const EBUSY        : int = 16;
-     pub const EEXIST       : int = 17;
-     pub const EXDEV        : int = 18;
-     pub const ENODEV       : int = 19;
-     pub const ENOTDIR      : int = 20;
-     pub const EISDIR       : int = 21;
-     pub const EINVAL       : int = 22;
-     pub const ENFILE       : int = 23;
-     pub const EMFILE       : int = 24;
-     pub const ENOTTY       : int = 25;
-     pub const ETXTBSY      : int = 26;
-     pub const EFBIG        : int = 27;
-     pub const ENOSPC       : int = 28;
-     pub const ESPIPE       : int = 29;
-     pub const EROFS        : int = 30;
-     pub const EMLINK       : int = 31;
-     pub const EPIPE        : int = 32;
-     pub const EDOM         : int = 33;
-     pub const ERANGE       : int = 34;
-     pub const EDEADLK      : int = 35;
-     pub const ENAMETOOLONG : int = 36;
-     pub const ENOLCK       : int = 37;
-     pub const ENOSYS       : int = 38;
-     pub const ENOTEMPTY    : int = 39;
-     pub const ELOOP        : int = 40;
-     pub const EWOULDBLOCK  : int = EAGAIN;
-     pub const ENOMSG       : int = 42;
-     pub const EIDRM        : int = 43;
-     pub const ECHRNG       : int = 44;
-     pub const EL2NSYNC     : int = 45;
-     pub const EL3HLT       : int = 46;
-     pub const EL3RST       : int = 47;
-     pub const ELNRNG       : int = 48;
-     pub const EUNATCH      : int = 49;
-     pub const ENOCSI       : int = 50;
-     pub const EL2HLT       : int = 51;
-     pub const EBADE        : int = 52;
-     pub const EBADR        : int = 53;
-     pub const EXFULL       : int = 54;
-     pub const ENOANO       : int = 55;
-     pub const EBADRQC      : int = 56;
-     pub const EBADSLT      : int = 57;
-     pub const EDEADLOCK    : int = EDEADLK;
-     pub const EBFONT       : int = 59;
-     pub const ENOSTR       : int = 60;
-     pub const ENODATA      : int = 61;
-     pub const ETIME        : int = 62;
-     pub const ENOSR        : int = 63;
-     pub const ENONET       : int = 64;
-     pub const ENOPKG       : int = 65;
-     pub const EREMOTE      : int = 66;
-     pub const ENOLINK      : int = 67;
-     pub const EADV         : int = 68;
-     pub const ESRMNT       : int = 69;
-     pub const ECOMM        : int = 70;
-     pub const EPROTO       : int = 71;
-     pub const EMULTIHOP    : int = 72;
-     pub const EDOTDOT      : int = 73;
-     pub const EINPROGRESS  : int = 115;
+     pub const EPERM        : uint = 1;
+     pub const ENOENT       : uint = 2;
+     pub const ESRCH        : uint = 3;
+     pub const EINTR        : uint = 4;
+     pub const EIO          : uint = 5;
+     pub const ENXIO        : uint = 6;
+     pub const E2BIG        : uint = 7;
+     pub const ENOEXEC      : uint = 8;
+     pub const EBADF        : uint = 9;
+     pub const ECHILD       : uint = 10;
+     pub const EAGAIN       : uint = 11;
+     pub const ENOMEM       : uint = 12;
+     pub const EACCESS      : uint = 13;
+     pub const EFAULT       : uint = 14;
+     pub const ENOTBLK      : uint = 15;
+     pub const EBUSY        : uint = 16;
+     pub const EEXIST       : uint = 17;
+     pub const EXDEV        : uint = 18;
+     pub const ENODEV       : uint = 19;
+     pub const ENOTDIR      : uint = 20;
+     pub const EISDIR       : uint = 21;
+     pub const EINVAL       : uint = 22;
+     pub const ENFILE       : uint = 23;
+     pub const EMFILE       : uint = 24;
+     pub const ENOTTY       : uint = 25;
+     pub const ETXTBSY      : uint = 26;
+     pub const EFBIG        : uint = 27;
+     pub const ENOSPC       : uint = 28;
+     pub const ESPIPE       : uint = 29;
+     pub const EROFS        : uint = 30;
+     pub const EMLINK       : uint = 31;
+     pub const EPIPE        : uint = 32;
+     pub const EDOM         : uint = 33;
+     pub const ERANGE       : uint = 34;
+     pub const EDEADLK      : uint = 35;
+     pub const ENAMETOOLONG : uint = 36;
+     pub const ENOLCK       : uint = 37;
+     pub const ENOSYS       : uint = 38;
+     pub const ENOTEMPTY    : uint = 39;
+     pub const ELOOP        : uint = 40;
+     pub const EWOULDBLOCK  : uint = EAGAIN;
+     pub const ENOMSG       : uint = 42;
+     pub const EIDRM        : uint = 43;
+     pub const ECHRNG       : uint = 44;
+     pub const EL2NSYNC     : uint = 45;
+     pub const EL3HLT       : uint = 46;
+     pub const EL3RST       : uint = 47;
+     pub const ELNRNG       : uint = 48;
+     pub const EUNATCH      : uint = 49;
+     pub const ENOCSI       : uint = 50;
+     pub const EL2HLT       : uint = 51;
+     pub const EBADE        : uint = 52;
+     pub const EBADR        : uint = 53;
+     pub const EXFULL       : uint = 54;
+     pub const ENOANO       : uint = 55;
+     pub const EBADRQC      : uint = 56;
+     pub const EBADSLT      : uint = 57;
+     pub const EDEADLOCK    : uint = EDEADLK;
+     pub const EBFONT       : uint = 59;
+     pub const ENOSTR       : uint = 60;
+     pub const ENODATA      : uint = 61;
+     pub const ETIME        : uint = 62;
+     pub const ENOSR        : uint = 63;
+     pub const ENONET       : uint = 64;
+     pub const ENOPKG       : uint = 65;
+     pub const EREMOTE      : uint = 66;
+     pub const ENOLINK      : uint = 67;
+     pub const EADV         : uint = 68;
+     pub const ESRMNT       : uint = 69;
+     pub const ECOMM        : uint = 70;
+     pub const EPROTO       : uint = 71;
+     pub const EMULTIHOP    : uint = 72;
+     pub const EDOTDOT      : uint = 73;
+     pub const EINPROGRESS  : uint = 115;
  }

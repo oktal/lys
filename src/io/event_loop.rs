@@ -3,11 +3,11 @@ use utils::BoundedQueue;
 use libc::c_void;
 use std::collections::TreeMap;
 use std::mem;
-use native::io::file::fd_t;
 
-use super::{Async, Pollable, AsyncReadable, AsyncWritable, IoFlag, IoEvent};
+use super::{AsyncIoProvider, Pollable, IoFlag, IoEvent};
+use super::fd_t;
 
-pub enum BackendType {
+pub enum Backend {
     /// Use the select() system call as a backend for the event loop
     Select,
 
@@ -25,21 +25,21 @@ pub enum BackendType {
 }
 
 
-fn create_poller(backend_type: BackendType) -> Box<Poller + 'static> {
+fn create_poller(backend_type: Backend) -> Box<Poller + 'static> {
     match backend_type {
-        Select => unimplemented!(),
-        Poll => unimplemented!(),
-        Epoll => box epoll::Epoll::new(1 << 16).unwrap(),
-        Kqueue => unimplemented!(),
-        IOCP => unimplemented!()
+        Backend::Select => unimplemented!(),
+        Backend::Poll => unimplemented!(),
+        Backend::Epoll => box epoll::Epoll::new(1 << 16).unwrap(),
+        Backend::Kqueue => unimplemented!(),
+        Backend::IOCP => unimplemented!()
     }
 }
 
 pub struct EventLoop<'a> {
     pub poller: Box<Poller + 'static>,
 
-    pub watchers: TreeMap<fd_t, &'a Async + 'a>,
-    pub events_queue: BoundedQueue<&'a Async + 'a>
+    pub watchers: TreeMap<fd_t, &'a AsyncIoProvider + 'a>,
+    pub events_queue: BoundedQueue<&'a AsyncIoProvider + 'a>
 }
 
 impl<'a> EventLoop<'a> {
@@ -47,7 +47,7 @@ impl<'a> EventLoop<'a> {
     pub fn default() -> EventLoop<'a> {
 
         EventLoop {
-            poller: create_poller(Epoll),
+            poller: create_poller(Backend::Epoll),
             watchers: TreeMap::new(),
             events_queue: BoundedQueue::new(1 << 8)
         }
@@ -73,7 +73,7 @@ impl<'a> EventLoop<'a> {
         }
     }
 
-    pub fn add_event(&mut self, event: &'a Async) {
+    pub fn start_io(&mut self, event: &'a AsyncIoProvider) {
         match self.events_queue.push(event) {
             Err(Full) => panic!("The event queue is full"),
             Ok(_) => ()
@@ -84,23 +84,9 @@ impl<'a> EventLoop<'a> {
         use super::{POLL_IN, POLL_OUT};
 
         let fd = event.data;
-        let watcher = self.watchers.find(&fd).unwrap();
+        let watcher = self.watchers.get(&fd).unwrap();
         let flags = event.flags;
-        if flags.contains(POLL_IN) {
-            if !watcher.is_readable() {
-                panic!("Recevied a POLL_IN on a non-readable event")
-            }
-
-            watcher.handle_read();
-        }
-
-        if flags.contains(POLL_OUT) {
-            if !watcher.is_writable() {
-                panic!("Received a POLL_OUT a non-writable event")
-            }
-
-            watcher.handle_write();
-        }
+        watcher.handle_event(event);
 
         let new_flags = watcher.poll_flags();
 

@@ -1,10 +1,12 @@
 use libc::{c_uint, c_int, size_t, read, write, close};
-use native::io::file::fd_t;
 use std::mem;
 use io::errno::{SysCallResult, Errno, consts};
 use io::event_loop::EventLoop;
 
-use io::{Async, Pollable, AsyncReadable, AsyncWritable, IoFlag, POLL_IN, POLL_OUT};
+use io::{Pollable, AsyncIoProvider, IoEvent, IoFlag, POLL_IN, POLL_OUT};
+use io::fd_t;
+
+use std::ptr;
 
 extern {
     fn eventfd(init_val: c_uint, flags: c_int) -> c_int;
@@ -19,17 +21,17 @@ bitflags!(
 
 pub type OnNotify = fn(notify: &Notify);
 
-pub struct Notify {
+pub struct Notify<'a> {
     callback: OnNotify,
     active: bool,
 
     fd: fd_t,
-    events: IoFlag
+    events: IoFlag,
 }
 
 
-impl Notify {
-    pub fn new(callback: OnNotify) -> SysCallResult<Notify> {
+impl<'a> Notify<'a> {
+    pub fn new(callback: OnNotify) -> SysCallResult<Notify<'a>> {
         let fd = unsafe {
             eventfd(0, EFD_NONBLOCK.bits())
         };
@@ -61,44 +63,36 @@ impl Notify {
     }
 }
 
-impl Pollable for Notify {
+impl<'a> Pollable for Notify<'a> {
     fn poll_fd(&self) -> fd_t { self.fd }
 
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
-impl AsyncReadable for Notify {
-    fn handle_read(&self) {
-        let value: u64 = 0;
-        loop {
-            let res = unsafe {
-                read(self.fd, mem::transmute(&value), 8)
-            };
+impl<'a> AsyncIoProvider for Notify<'a> {
+    fn handle_event(&self, event: &IoEvent) {
+        if event.is_readable() {
+            let value: u64 = 0;
+            loop {
+                let res = unsafe {
+                    read(self.fd, mem::transmute(&value), 8)
+                };
 
-            if res == -1 {
-                match Errno::current().value() {
-                    consts::EAGAIN => break,
-                    err => panic!(err)
+                if res == -1 {
+                    match Errno::current().value() {
+                        consts::EAGAIN => break,
+                        err => panic!(err)
+                    }
                 }
-            }
 
-            if res != 8 {
-                panic!("Notify: failed to read the right number of bytes");
-            }
+                if res != 8 {
+                    panic!("Notify: failed to read the right number of bytes");
+                }
 
-            (self.callback)(self)
+                (self.callback)(self)
+            }
         }
 
     }
 
-}
-
-impl AsyncWritable for Notify {
-    fn handle_write(&self) { }
-}
-
-impl Async for Notify {
-    fn is_readable(&self) -> bool { true }
-
-    fn is_writable(&self) -> bool { false }
 }

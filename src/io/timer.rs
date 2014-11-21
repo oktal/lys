@@ -1,10 +1,10 @@
 use std::mem;
 use std::ptr;
 use libc::{c_int, c_void, time_t, size_t, timespec, read, close, CLOCK_MONOTONIC};
-use native::io::file::fd_t;
 use io::event_loop::EventLoop;
 use io::errno::{SysCallResult, Errno, consts};
-use super::{Async, Pollable, AsyncReadable, AsyncWritable, IoFlag, POLL_IN, POLL_OUT};
+use io::{Pollable, AsyncIoProvider, IoEvent, IoFlag, POLL_IN, POLL_OUT};
+use io::fd_t;
 
 #[repr(C, packed)]
 struct TimerSpec {
@@ -107,43 +107,6 @@ impl Timer {
         }
     }
 
-    pub fn attach_to<'a>(&'a self, ev_loop: &mut EventLoop<'a>) {
-       // ev_loop.poller.register(self.fd);
-
-       // ev_loop.watchers.insert(self.fd, self);
-    }
-
-}
-
-impl AsyncReadable for Timer {
-    fn handle_read(&self) {
-
-        let mut num_timeouts: u64 = 0;
-        loop {
-            let res = unsafe {
-               read(self.fd, mem::transmute(&num_timeouts), 8 as size_t)
-            };
-            if res == -1 {
-                let err = Errno::current();
-                match err.value() {
-                    consts::EAGAIN => break,
-                    _ => panic!(err)
-                }
-            }
-
-            if res != 8 {
-                panic!("Timer: failed to read the right number of bytes");
-            }
-
-            (self.callback)(self, num_timeouts);
-            break;
-        }
-
-    }
-}
-
-impl AsyncWritable for Timer {
-    fn handle_write(&self) { }
 }
 
 impl Pollable for Timer {
@@ -152,8 +115,29 @@ impl Pollable for Timer {
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
-impl Async for Timer {
-    fn is_readable(&self) -> bool { true }
+impl AsyncIoProvider for Timer {
+    fn handle_event(&self, event: &IoEvent) {
+        if event.is_readable() {
+            let mut num_timeouts: u64 = 0;
+            loop {
+                let res = unsafe {
+                   read(self.fd, mem::transmute(&num_timeouts), 8 as size_t)
+                };
+                if res == -1 {
+                    let err = Errno::current();
+                    match err.value() {
+                        consts::EAGAIN => break,
+                        _ => panic!(err)
+                    }
+                }
 
-    fn is_writable(&self) -> bool { false }
+                if res != 8 {
+                    panic!("Timer: failed to read the right number of bytes");
+                }
+
+                (self.callback)(self, num_timeouts);
+                break;
+            }
+        }
+    }
 }

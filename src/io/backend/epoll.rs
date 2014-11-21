@@ -3,8 +3,7 @@ use std::mem;
 use std::ptr;
 use io::errno::{SysCallResult, Errno};
 use io::{IoFlag, IoEvent, POLL_IN, POLL_OUT};
-
-use native::io::file::fd_t;
+use io::fd_t;
 
 use super::{Poller, ToIoFlags, FromIoFlags};
 
@@ -16,9 +15,9 @@ extern {
 
 #[repr(C)]
 pub enum EpollControl {
-    EpollCtlAdd = 1,
-    EpollCtlDel = 2,
-    EpollCtlMod = 3
+    Add = 1,
+    Del = 2,
+    Mod = 3
 }
 
 #[repr(C, packed)]
@@ -101,7 +100,7 @@ impl Poller for Epoll {
         };
 
         let res = unsafe {
-            epoll_ctl(self.efd, EpollCtlAdd as c_int, fd, &event as *const EpollEvent)
+            epoll_ctl(self.efd, EpollControl::Add as c_int, fd, &event as *const EpollEvent)
         };
 
         if res < 0 {
@@ -118,7 +117,7 @@ impl Poller for Epoll {
         };
 
         let res = unsafe {
-            epoll_ctl(self.efd, EpollCtlMod as c_int, fd, &event as *const EpollEvent)
+            epoll_ctl(self.efd, EpollControl::Mod as c_int, fd, &event as *const EpollEvent)
         };
 
         if res < 0 {
@@ -130,7 +129,7 @@ impl Poller for Epoll {
 
     fn remove_poll_list(&mut self, fd: fd_t) -> SysCallResult<()> {
         let res = unsafe {
-            epoll_ctl(self.efd, EpollCtlDel as c_int, fd, ptr::null())
+            epoll_ctl(self.efd, EpollControl::Del as c_int, fd, ptr::null())
         };
 
         if res < 0 {

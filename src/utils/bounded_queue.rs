@@ -31,7 +31,7 @@ impl<T> BoundedQueue<T> {
 
      pub fn push(&mut self, value: T) -> QueueResult<uint> {
          if self.is_full() {
-             return Err(Full);
+             return Err(State::Full);
          }
 
          let index = self.write_index;
@@ -44,7 +44,7 @@ impl<T> BoundedQueue<T> {
 
      pub fn pop(&mut self) -> QueueResult<T> {
          if self.is_empty() {
-             return Err(Empty);
+             return Err(State::Empty);
          }
 
          let value = self.data.index_mut(&self.read_index).take().unwrap();

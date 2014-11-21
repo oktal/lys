@@ -1,6 +1,6 @@
 use io::{IoFlag, IoEvent};
 use io::errno::SysCallResult;
-use native::io::file::fd_t;
+use io::fd_t;
 use libc;
 
 pub trait Poller {
