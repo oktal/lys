@@ -4,7 +4,7 @@ use libc::c_void;
 use std::collections::TreeMap;
 use std::mem;
 
-use super::{AsyncIoProvider, Pollable, IoFlag, IoEvent};
+use super::{AsyncIoProvider, IoEventHandler, EventData, Pollable, IoFlag};
 use super::fd_t;
 
 pub enum Backend {
@@ -53,7 +53,7 @@ impl<'a> EventLoop<'a> {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run<H: IoEventHandler>(&mut self, handler: &H) {
         loop {
             // First we dequeue all the events and add them to the loop
             while (!self.events_queue.is_empty()) {
@@ -68,7 +68,7 @@ impl<'a> EventLoop<'a> {
             let poll_events = self.poller.poll(consts::POLL_TIMEOUT).unwrap();
 
             for io_event in poll_events.iter() {
-                self.process_event(io_event);
+                self.process_event(io_event, handler);
             }
         }
     }
@@ -80,13 +80,13 @@ impl<'a> EventLoop<'a> {
         }
     }
 
-    fn process_event(&mut self, event: &IoEvent) {
+    fn process_event<H: IoEventHandler>(&mut self, event: &EventData, handler: &H) {
         use super::{POLL_IN, POLL_OUT};
 
         let fd = event.data;
         let watcher = self.watchers.get(&fd).unwrap();
         let flags = event.flags;
-        watcher.handle_event(event);
+        watcher.handle_event(event, handler);
 
         let new_flags = watcher.poll_flags();
 

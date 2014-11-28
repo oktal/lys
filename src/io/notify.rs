@@ -3,7 +3,10 @@ use std::mem;
 use io::errno::{SysCallResult, Errno, consts};
 use io::event_loop::EventLoop;
 
-use io::{Pollable, AsyncIoProvider, IoEvent, IoFlag, POLL_IN, POLL_OUT};
+use io::{
+    Pollable, IoEventHandler, AsyncIoProvider,
+    IoEvent, IoFlag, EventData, POLL_IN, POLL_OUT
+};
 use io::fd_t;
 
 use std::ptr;
@@ -19,19 +22,15 @@ bitflags!(
     }
 )
 
-pub type OnNotify = fn(notify: &Notify);
 
-pub struct Notify<'a> {
-    callback: OnNotify,
-    active: bool,
-
+pub struct Notify {
     fd: fd_t,
     events: IoFlag,
 }
 
 
-impl<'a> Notify<'a> {
-    pub fn new(callback: OnNotify) -> SysCallResult<Notify<'a>> {
+impl Notify {
+    pub fn new() -> SysCallResult<Notify> {
         let fd = unsafe {
             eventfd(0, EFD_NONBLOCK.bits())
         };
@@ -41,9 +40,7 @@ impl<'a> Notify<'a> {
         }
 
         Ok(Notify {
-            callback: callback,
             fd: fd,
-            active: false,
             events: POLL_IN
         })
     }
@@ -63,14 +60,14 @@ impl<'a> Notify<'a> {
     }
 }
 
-impl<'a> Pollable for Notify<'a> {
+impl Pollable for Notify {
     fn poll_fd(&self) -> fd_t { self.fd }
 
     fn poll_flags(&self) -> IoFlag { self.events }
 }
 
-impl<'a> AsyncIoProvider for Notify<'a> {
-    fn handle_event(&self, event: &IoEvent) {
+impl AsyncIoProvider for Notify {
+    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
         if event.is_readable() {
             let value: u64 = 0;
             loop {
@@ -89,7 +86,7 @@ impl<'a> AsyncIoProvider for Notify<'a> {
                     panic!("Notify: failed to read the right number of bytes");
                 }
 
-                (self.callback)(self)
+                handler.handle_event(IoEvent::Notify);
             }
         }
 

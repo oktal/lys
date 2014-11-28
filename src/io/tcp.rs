@@ -1,5 +1,8 @@
 use io::errno::{SysCallResult, Errno};
-use io::{AsyncIoProvider, Pollable, IoEvent, IoFlag, POLL_IN, POLL_OUT};
+use io::{
+    AsyncIoProvider, IoEventHandler, Pollable,
+    IoEvent, IoFlag, EventData, POLL_IN, POLL_OUT
+};
 
 use io::EventLoop;
 use io::{fd_t, sock_t};
@@ -57,11 +60,7 @@ bitflags!(
     }
 )
 
-pub type OnConnect = fn(tcp: &Tcp);
-pub type OnNewConnection = Fn<(), ()> + 'static;
-
 pub struct Tcp {
-    callback: OnConnect,
     fd: sock_t,
 
     events: Cell<IoFlag>
@@ -92,7 +91,7 @@ fn create_socket() -> SysCallResult<sock_t> {
 
 
 impl Tcp {
-    pub fn connect(host: &str, port: u16, callback: OnConnect) -> SysCallResult<Tcp> {
+    pub fn connect(host: &str, port: u16) -> SysCallResult<Tcp> {
 
         let hint = libc::addrinfo {
             ai_flags: 0,
@@ -132,7 +131,6 @@ impl Tcp {
         }
 
         Ok(Tcp {
-            callback: callback,
             fd: sock_fd,
             events: Cell::new(POLL_IN | POLL_OUT)
         })
@@ -142,19 +140,11 @@ impl Tcp {
 }
 
 
-pub struct TcpEndpoint<'a> {
+pub struct TcpEndpoint {
     fd: fd_t,
     events: IoFlag,
-
-    on_connection: &'a OnNewConnection
 }
 
-struct NullConnectionHandler;
-
-impl Fn<(), ()> for NullConnectionHandler {
-    fn call(&self) {
-    }
-}
 
 impl TcpEndpoint {
     pub fn bind(host: &str, port: u16)
@@ -191,11 +181,10 @@ impl TcpEndpoint {
         Ok(TcpEndpoint {
             fd: sock_fd,
             events: POLL_IN,
-            on_connection: NullConnectionHandler
         })
     }
 
-    pub fn listen(&mut self, on_connection: OnNewConnection) -> SysCallResult<()> {
+    pub fn listen(&mut self) -> SysCallResult<()> {
         let res = unsafe {
             libc::listen(self.fd, consts::LISTEN_BACKLOG as i32)
         };
@@ -203,8 +192,6 @@ impl TcpEndpoint {
         if res < 0 {
             return Err(Errno::current());
         }
-
-        self.on_connection = on_connection;
 
         Ok( () )
     }
@@ -225,8 +212,7 @@ impl Pollable for Tcp {
 }
 
 impl AsyncIoProvider for Tcp {
-    fn handle_event(&self, event: &IoEvent) {
-        (self.callback)(self);
+    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
         let mut events = self.events.get();
         if events.contains(POLL_OUT) {
             events.remove(POLL_OUT);
@@ -242,9 +228,10 @@ impl Pollable for TcpEndpoint {
 }
 
 impl AsyncIoProvider for TcpEndpoint {
-    fn handle_event(&self, event: &IoEvent) {
-        let on_connection = self.on_connection.unwrap();
-        (on_connection)();
+    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
+        if event.is_readable() {
+            handler.handle_event(IoEvent::TcpConnection);
+        }
     }
 
 }
@@ -336,22 +323,6 @@ impl<'a> Iterator<TcpSocket> for EstablishedConnections<'a> {
 
         Some(TcpSocket{ fd: res as fd_t, events: POLL_IN })
 
-    }
-}
-
-impl Pollable for TcpSocket {
-    fn poll_fd(&self) -> fd_t { self.fd }
-
-    fn poll_flags(&self) -> IoFlag { self.events }
-}
-
-impl AsyncIoProvider for TcpSocket {
-    fn handle_event(&self, event: &IoEvent) {
-        let buffer : &mut[libc::c_char, ..consts::READ_BUFFER_SIZE] = unsafe { mem::zeroed() };
-        let res = unsafe {
-            libc::read(self.fd as libc::c_int, buffer.as_ptr() as *mut libc::c_void,
-                       consts::READ_BUFFER_SIZE as libc::size_t)
-        };
     }
 }
 

@@ -14,8 +14,18 @@ pub trait Pollable {
     fn poll_flags(&self) -> IoFlag;
 }
 
+pub enum IoEvent {
+    Notify,
+    Timer(u64),
+    TcpConnection
+}
+
 pub trait AsyncIoProvider : Pollable {
-    fn handle_event(&self, event: &IoEvent);
+    fn handle_event(&self, data: &EventData, handler: &IoEventHandler);
+}
+
+pub trait IoEventHandler {
+    fn handle_event(&self, io_event: IoEvent);
 }
 
 bitflags!(
@@ -27,17 +37,17 @@ bitflags!(
     }
 )
 
-pub struct IoEvent {
+pub struct EventData {
     flags: IoFlag,
     data: c_int
 }
 
-impl IoEvent {
-    fn is_readable(&self) -> bool {
+impl EventData {
+    pub fn is_readable(&self) -> bool {
         self.flags.contains(POLL_IN)
     }
 
-    fn is_writable(&self) -> bool {
+    pub fn is_writable(&self) -> bool {
         self.flags.contains(POLL_OUT)
     }
 }

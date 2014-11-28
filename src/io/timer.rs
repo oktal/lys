@@ -3,7 +3,10 @@ use std::ptr;
 use libc::{c_int, c_void, time_t, size_t, timespec, read, close, CLOCK_MONOTONIC};
 use io::event_loop::EventLoop;
 use io::errno::{SysCallResult, Errno, consts};
-use io::{Pollable, AsyncIoProvider, IoEvent, IoFlag, POLL_IN, POLL_OUT};
+use io::{
+    Pollable, IoEventHandler, AsyncIoProvider,
+    EventData, IoEvent, IoFlag, POLL_IN, POLL_OUT
+};
 use io::fd_t;
 
 #[repr(C, packed)]
@@ -69,38 +72,30 @@ fn create_timerfd(interval: u64, single_shot: bool) -> SysCallResult<fd_t>
     Ok(fd)
 }
 
-pub type OnTimer = fn(timer: &Timer, numTimeouts: u64);
-
 pub struct Timer {
-    callback: OnTimer,
     interval: u64,
-    active: bool,
 
     fd: fd_t,
     events: IoFlag
 }
 
 impl Timer {
-    pub fn new(callback: OnTimer, interval: u64) -> SysCallResult<Timer> {
+    pub fn new(interval: u64) -> SysCallResult<Timer> {
         match create_timerfd(interval, false) {
             Ok(fd) => Ok(Timer {
-                callback: callback,
                 interval: interval,
                 fd: fd,
-                active: false,
                 events: POLL_IN
             }),
             Err(errno) => Err(errno)
         }
     }
 
-    pub fn single_shot(callback: OnTimer, interval: u64) -> SysCallResult<Timer> {
+    pub fn single_shot(interval: u64) -> SysCallResult<Timer> {
         match create_timerfd(interval, true) {
             Ok(fd) => Ok(Timer {
-                callback: callback,
                 interval: interval,
                 fd: fd,
-                active: false,
                 events: POLL_IN
             }),
             Err(errno) => Err(errno)
@@ -116,7 +111,7 @@ impl Pollable for Timer {
 }
 
 impl AsyncIoProvider for Timer {
-    fn handle_event(&self, event: &IoEvent) {
+    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
         if event.is_readable() {
             let mut num_timeouts: u64 = 0;
             loop {
@@ -135,7 +130,7 @@ impl AsyncIoProvider for Timer {
                     panic!("Timer: failed to read the right number of bytes");
                 }
 
-                (self.callback)(self, num_timeouts);
+                handler.handle_event(IoEvent::Timer(num_timeouts));
                 break;
             }
         }

@@ -2,7 +2,7 @@ use libc::{c_int, c_void};
 use std::mem;
 use std::ptr;
 use io::errno::{SysCallResult, Errno};
-use io::{IoFlag, IoEvent, POLL_IN, POLL_OUT};
+use io::{IoFlag, EventData, POLL_IN, POLL_OUT};
 use io::fd_t;
 
 use super::{Poller, ToIoFlags, FromIoFlags};
@@ -139,7 +139,7 @@ impl Poller for Epoll {
         Ok( () )
     }
 
-    fn poll(&self, timeout_ms: uint) -> SysCallResult<Vec<IoEvent>> {
+    fn poll(&self, timeout_ms: uint) -> SysCallResult<Vec<EventData>> {
         let mut epoll_events: [EpollEvent, ..256] = unsafe { mem::uninitialized() };
 
         let res = unsafe {
@@ -155,7 +155,7 @@ impl Poller for Epoll {
         let mut io_events = Vec::with_capacity(res as uint);
 
         for epoll_event in epoll_events.iter().take(res as uint) {
-            io_events.push(IoEvent {
+            io_events.push(EventData {
                 flags: epoll_event.events.to_io_flags(),
                 data: epoll_event.data
             });
