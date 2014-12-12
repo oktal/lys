@@ -1,5 +1,5 @@
 use io::backend::{Poller, epoll, EpollEventKind};
-use utils::BoundedQueue;
+use utils::{BoundedQueue, State};
 use libc::c_void;
 use std::collections::TreeMap;
 use std::rc::Rc;
@@ -78,7 +78,8 @@ impl<'a> EventLoop<'a> {
     pub fn start_io(&mut self, event: Rc<Box<AsyncIoProvider + 'a>>)
     {
         match self.events_queue.push(event) {
-            Err(Full) => panic!("The event queue is full"),
+            Err(State::Full) => panic!("The event queue is full"),
+            Err(State::Empty) => panic!("Should not happen"),
             Ok(_) => ()
         }
     }

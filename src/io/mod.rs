@@ -31,6 +31,7 @@ pub trait IoEventHandler {
 }
 
 bitflags!(
+    #[deriving(Copy)]
     flags IoFlag: c_int {
         const POLL_IN     = 1,
         const POLL_OUT    = 2,
