@@ -111,7 +111,7 @@ impl Pollable for Timer {
 }
 
 impl AsyncIoProvider for Timer {
-    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>, event: &EventData, handler: &IoEventHandler) {
         if event.is_readable() {
             let mut num_timeouts: u64 = 0;
             loop {
@@ -130,7 +130,7 @@ impl AsyncIoProvider for Timer {
                     panic!("Timer: failed to read the right number of bytes");
                 }
 
-                handler.handle_event(IoEvent::Timer(num_timeouts));
+                handler.handle_event(ev_loop, IoEvent::Timer(num_timeouts));
                 break;
             }
         }

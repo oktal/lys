@@ -212,7 +212,8 @@ impl Pollable for Tcp {
 }
 
 impl AsyncIoProvider for Tcp {
-    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>, event: &EventData, handler: &IoEventHandler) {
+
         let mut events = self.events.get();
         if events.contains(POLL_OUT) {
             events.remove(POLL_OUT);
@@ -228,9 +229,9 @@ impl Pollable for TcpEndpoint {
 }
 
 impl AsyncIoProvider for TcpEndpoint {
-    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>, event: &EventData, handler: &IoEventHandler) {
         if event.is_readable() {
-            handler.handle_event(IoEvent::TcpConnection);
+            handler.handle_event(ev_loop, IoEvent::TcpConnection);
         }
     }
 
@@ -239,6 +240,29 @@ impl AsyncIoProvider for TcpEndpoint {
 pub struct TcpSocket {
     fd: fd_t,
     events: IoFlag
+}
+
+impl Pollable for TcpSocket {
+    fn poll_fd(&self) -> fd_t { self.fd }
+
+    fn poll_flags(&self) -> IoFlag { self.events }
+}
+
+impl AsyncIoProvider for TcpSocket {
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>, data: &EventData, handler: &IoEventHandler) {
+        if (data.is_readable()) {
+            let mut raw: [u8, ..512] = unsafe { mem::zeroed() };
+            unsafe {
+                let res = libc::read(self.fd, raw.as_mut_ptr() as *mut libc::c_void, 512);
+
+                if res > 0 {
+                    let mut buffer = Vec::with_capacity(512);
+                    buffer.push_all(&raw);
+                    handler.handle_event(ev_loop, IoEvent::In(buffer));
+                }
+            }
+        }
+    }
 }
 
 pub struct EstablishedConnections<'a> {
@@ -316,10 +340,6 @@ impl<'a> Iterator<TcpSocket> for EstablishedConnections<'a> {
         };
 
         let (_, peer_name) = peer_info;
-
-        println!("peer_name -> {}", peer_name);
-        println!("host_name -> {}", host_name);
-        println!("serv_name -> {}", serv_name);
 
         Some(TcpSocket{ fd: res as fd_t, events: POLL_IN })
 

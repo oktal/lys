@@ -1,38 +1,47 @@
 extern crate lys;
 
 use lys::io::{EventLoop, IoEventHandler, IoEvent};
-use lys::io::{Timer, Notify};
+use lys::io::{AsyncIoProvider, Timer, Notify};
 use lys::io::tcp::TcpEndpoint;
+
+use std::rc::Rc;
 
 struct SimpleTcpServer<'a> {
     ev_loop: EventLoop<'a>,
-    endpoint: TcpEndpoint
+    endpoint: Rc<Box<TcpEndpoint>>
 }
 
-struct MyIoHandler<'a> {
-    endpoint: &'a TcpEndpoint
+struct MyIoHandler {
+    endpoint: Rc<Box<TcpEndpoint>>
 }
 
-impl<'a> MyIoHandler<'a> {
-    pub fn new(endpoint: &'a TcpEndpoint) -> MyIoHandler<'a> {
+impl MyIoHandler {
+    pub fn new(endpoint: Rc<Box<TcpEndpoint>>) -> MyIoHandler {
         MyIoHandler {
             endpoint: endpoint
         }
     }
 
-    fn handle_tcp_connection(&self) {
+    fn handle_tcp_connection<'a>(&self, ev_loop: &'a mut EventLoop<'a>) {
         println!("New connection !");
 
         for conn in self.endpoint.accept() {
+            ev_loop.start_io(Rc::new(box conn as Box<AsyncIoProvider>));
         }
+    }
+
+    fn handle_tcp_data<'a>(&self, ev_loop: &'a mut EventLoop<'a>, data: Vec<u8>) {
+        println!("Data !")
     }
 
 }
 
-impl<'a> IoEventHandler for MyIoHandler<'a> {
-    fn handle_event(&self, io_event: IoEvent) {
+impl IoEventHandler for MyIoHandler {
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>, io_event: IoEvent) {
         match io_event {
-            TcpConnection => self.handle_tcp_connection()
+            IoEvent::TcpConnection => self.handle_tcp_connection(ev_loop),
+            IoEvent::In(data) => self.handle_tcp_data(ev_loop, data),
+            _ => ()
         }
     }
 
@@ -42,7 +51,7 @@ impl<'a> SimpleTcpServer<'a> {
     pub fn new() -> SimpleTcpServer<'a> {
         let mut ev_loop = EventLoop::default();
 
-        let endpoint = TcpEndpoint::bind("0.0.0.0", 9090).unwrap();
+        let endpoint = Rc::new(box TcpEndpoint::bind("0.0.0.0", 9090).unwrap());
 
         SimpleTcpServer {
             ev_loop: ev_loop,
@@ -56,10 +65,11 @@ impl<'a> SimpleTcpServer<'a> {
     }
 
     pub fn start(&mut self) {
-        self.ev_loop.start_io(&self.endpoint);
+        //self.ev_loop.start_io(self.endpoint);
 
-        let handler = MyIoHandler::new(&self.endpoint);
+        let handler = MyIoHandler::new(self.endpoint);
         self.ev_loop.run(&handler);
+
     }
 }
 

@@ -17,15 +17,17 @@ pub trait Pollable {
 pub enum IoEvent {
     Notify,
     Timer(u64),
-    TcpConnection
+    TcpConnection,
+    In(Vec<u8>)
 }
 
 pub trait AsyncIoProvider : Pollable {
-    fn handle_event(&self, data: &EventData, handler: &IoEventHandler);
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>,
+                        data: &EventData, handler: &IoEventHandler);
 }
 
 pub trait IoEventHandler {
-    fn handle_event(&self, io_event: IoEvent);
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>, io_event: IoEvent);
 }
 
 bitflags!(

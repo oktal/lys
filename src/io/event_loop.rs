@@ -2,10 +2,12 @@ use io::backend::{Poller, epoll, EpollEventKind};
 use utils::BoundedQueue;
 use libc::c_void;
 use std::collections::TreeMap;
+use std::rc::Rc;
 use std::mem;
 
 use super::{AsyncIoProvider, IoEventHandler, EventData, Pollable, IoFlag};
 use super::fd_t;
+use io::Notify;
 
 pub enum Backend {
     /// Use the select() system call as a backend for the event loop
@@ -38,8 +40,8 @@ fn create_poller(backend_type: Backend) -> Box<Poller + 'static> {
 pub struct EventLoop<'a> {
     pub poller: Box<Poller + 'static>,
 
-    pub watchers: TreeMap<fd_t, &'a AsyncIoProvider + 'a>,
-    pub events_queue: BoundedQueue<&'a AsyncIoProvider + 'a>
+    pub watchers: TreeMap<fd_t, Rc<Box<AsyncIoProvider + 'a>>>,
+    pub events_queue: BoundedQueue<Rc<Box<AsyncIoProvider + 'a>>>
 }
 
 impl<'a> EventLoop<'a> {
@@ -73,20 +75,21 @@ impl<'a> EventLoop<'a> {
         }
     }
 
-    pub fn start_io(&mut self, event: &'a AsyncIoProvider) {
+    pub fn start_io(&mut self, event: Rc<Box<AsyncIoProvider + 'a>>)
+    {
         match self.events_queue.push(event) {
             Err(Full) => panic!("The event queue is full"),
             Ok(_) => ()
         }
     }
 
-    fn process_event<H: IoEventHandler>(&mut self, event: &EventData, handler: &H) {
+    fn process_event<H: IoEventHandler>(&'a mut self, event: &EventData, handler: &H) {
         use super::{POLL_IN, POLL_OUT};
 
         let fd = event.data;
         let watcher = self.watchers.get(&fd).unwrap();
         let flags = event.flags;
-        watcher.handle_event(event, handler);
+        watcher.handle_event(self, event, handler);
 
         let new_flags = watcher.poll_flags();
 

@@ -67,7 +67,7 @@ impl Pollable for Notify {
 }
 
 impl AsyncIoProvider for Notify {
-    fn handle_event(&self, event: &EventData, handler: &IoEventHandler) {
+    fn handle_event<'a>(&self, ev_loop: &'a mut EventLoop<'a>, event: &EventData, handler: &IoEventHandler) {
         if event.is_readable() {
             let value: u64 = 0;
             loop {
@@ -86,7 +86,7 @@ impl AsyncIoProvider for Notify {
                     panic!("Notify: failed to read the right number of bytes");
                 }
 
-                handler.handle_event(IoEvent::Notify);
+                handler.handle_event(ev_loop, IoEvent::Notify);
             }
         }
 
