@@ -2,6 +2,7 @@ use std::option::Option;
 use std::bitflags;
 use std::ptr;
 use std::mem;
+use std::collections::HashMap;
 
 use libc;
 
@@ -23,6 +24,15 @@ bitflags!(
     }
 );
 
+pub enum Event<'a> {
+    TcpConnection,
+    TcpIn(Vec<u8>),
+}
+
+pub trait EventHandler {
+    fn handle_event(&self, event: Event);
+}
+
 pub trait Pollable {
     fn poll_fd(&self) -> fd_t;
 
@@ -30,13 +40,14 @@ pub trait Pollable {
 }
 
 pub trait AsyncIoProvider : Pollable {
-    fn process_event(&self, flags: IoFlag);
+    fn process_event(&self, flags: IoFlag, handler: &EventHandler);
 }
 
 pub struct IoEvent {
     fd: fd_t,
     flags: IoFlag
 }
+
 
 pub trait Poller {
     fn add(&mut self, fd: fd_t, flags: IoFlag) -> libc::c_int;
@@ -136,7 +147,7 @@ impl Poller for Epoll {
     fn add(&mut self, fd: fd_t, flags: IoFlag) -> libc::c_int {
         let event = EpollEvent {
             events: FromIoFlags::from_io_flags(flags),
-            data: 0 as libc::c_int
+            data: fd as libc::c_int
         };
 
         let res = unsafe {
@@ -192,11 +203,14 @@ impl Poller for Epoll {
     }
 }
 
-mod tcp {
+pub mod tcp {
     use libc;
     use std::mem;
 
-    use super::{IoFlag, fd_t, POLL_IN};
+    use super::{
+        IoFlag, fd_t, POLL_IN, Pollable, AsyncIoProvider,
+        EventHandler, Event
+    };
 
     extern {
         fn inet_pton(af: libc::c_int, src: *const libc::c_char, dst: *mut libc::c_void)
@@ -262,11 +276,82 @@ mod tcp {
                 flags: POLL_IN
             })
        }
-    } 
+
+       pub fn listen(&mut self) -> libc::c_int {
+           let res = unsafe {
+               libc::listen(self.fd, 128 as i32)
+           };
+
+           res
+       }
+
+       pub fn accept<'a>(&'a self) -> IncomingConnections<'a> {
+           IncomingConnections { endpoint: self }
+       }
+    }
+
+    impl Pollable for Endpoint {
+        fn poll_fd(&self) -> fd_t { self.fd }
+
+        fn poll_flags(&self) -> IoFlag { self.flags }
+    }
+
+    impl AsyncIoProvider for Endpoint {
+        fn process_event(&self, flags: IoFlag, handler: &EventHandler) {
+            handler.handle_event(super::Event::TcpConnection);
+        }
+    }
+
+    pub struct Socket {
+        fd: fd_t,
+        flags: IoFlag
+    }
+
+    impl Pollable for Socket {
+        fn poll_fd(&self) -> fd_t { self.fd }
+
+        fn poll_flags(&self) -> IoFlag { self.flags }
+    }
+
+    impl AsyncIoProvider for Socket {
+        fn process_event(&self, flags: IoFlag, handler: &EventHandler) {
+            println!("Data has been received in the socket fd -> {}", self.fd);
+        }
+    }
+
+    pub struct IncomingConnections<'a> {
+        endpoint: &'a Endpoint
+    }
+
+    impl<'a> Iterator<Socket> for IncomingConnections<'a> {
+        fn next(&mut self) -> Option<Socket> {
+            let mut peer_addr = libc::sockaddr_in {
+                sin_family: libc::AF_INET as libc::sa_family_t,
+                sin_port: 0,
+                sin_addr: unsafe { mem::uninitialized() },
+                sin_zero: unsafe { mem::zeroed() }
+            };
+
+            let mut peer_addr_len = 0 as libc::socklen_t;
+            
+            let res = unsafe {
+                libc::accept(self.endpoint.fd, mem::transmute(&mut peer_addr), &mut peer_addr_len)
+            };
+
+            if res < 0 {
+                return None;
+            }
+
+            println!("Incoming connection has been accepted !");
+            Some(Socket { fd: res, flags: POLL_IN })
+        }
+    }
+
+
 }
 
 pub struct EventLoop<'a> {
-    providers: Vec<&'a (AsyncIoProvider + 'a)>,
+    providers: HashMap<fd_t, &'a (AsyncIoProvider + 'a)>,
 
     poller: Box<Poller + 'static>
 }
@@ -276,17 +361,38 @@ impl<'a> EventLoop<'a> {
         let epoller = box Epoll::new(1024).unwrap();
 
         EventLoop {
-            providers: Vec::new(),
+            providers: HashMap::new(),
             poller: epoller
         }
     }
 
-    pub fn join(&'a mut self, provider: &'a (AsyncIoProvider + 'a)) {
+    pub fn join(&mut self, provider: &'a (AsyncIoProvider + 'a)) {
         let poll_fd = provider.poll_fd();
         let poll_flags = provider.poll_flags();
         println!("Starting polling on fd -> {}", poll_fd);
 
         self.poller.add(poll_fd, poll_flags);
+        self.providers.insert(poll_fd, provider);
+    }
+
+    pub fn run<H: EventHandler>(&self, handler: &H) {
+        loop {
+            let events = self.poller.poll(0).unwrap();
+
+            for event in events.iter() {
+                self.process_event(event, handler);
+            }
+        }
+    }
+
+    fn process_event<H: EventHandler>(&self, event: &IoEvent, handler: &H) {
+        let fd = event.fd;
+
+        match self.providers.get(&fd) {
+            Some(provider) => provider.process_event(event.flags, handler),
+            None => panic!("Unknown provider for fd {}", fd)
+        };
+
     }
 }
 
